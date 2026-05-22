@@ -1,18 +1,50 @@
+import { Navigate, Route, Routes } from "react-router-dom"
+import { TopNavigation } from "./components/layout/TopNavigation"
+import { LoginPage } from "./features/auth/LoginPage"
+import { AdminDashboard } from "./features/admin/AdminDashboard"
+import { TrainerDashboard } from "./features/trainer/TrainerDashboard"
+import { StudentApp } from "./features/student/StudentApp"
+import { ProtectedRoute } from "./features/auth/ProtectedRoute"
+
 function App() {
   return (
-    <main className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
-      <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-8 shadow-xl">
-        <h1 className="text-4xl font-bold">
-          FitCore <span className="text-yellow-500">Pro</span>
-        </h1>
-        <p className="mt-3 text-neutral-400">
-          Frontend configurado correctamente.
-        </p>
-        <button className="mt-6 rounded-xl bg-yellow-500 px-6 py-3 font-bold text-black transition hover:bg-yellow-400">
-          Comenzar
-        </button>
-      </div>
-    </main>
+    <>
+      <TopNavigation />
+
+      <Routes>
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/login" element={<LoginPage />} />
+
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN"]}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/entrenador"
+          element={
+            <ProtectedRoute allowedRoles={["TRAINER"]}>
+              <TrainerDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/alumno"
+          element={
+            <ProtectedRoute allowedRoles={["STUDENT"]}>
+              <StudentApp />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </>
   )
 }
 
