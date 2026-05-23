@@ -1,0 +1,16 @@
+services:
+  fitcore-postgres:
+    image: postgres:16
+    container_name: fitcore-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: fitcore_pro
+      POSTGRES_USER: fitcore_user
+      POSTGRES_PASSWORD: fitcore_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - fitcore_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  fitcore_postgres_data:
