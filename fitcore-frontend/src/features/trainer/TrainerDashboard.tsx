@@ -1,7 +1,21 @@
+import { useEffect, useState } from "react"
 import { ClipboardList, Dumbbell, Plus, Target, Users } from "lucide-react"
 import { trainerStudents } from "../../data/mockData"
+import {
+  getTrainerDashboardAccess,
+  type DashboardAccessResponse,
+} from "../../services/dashboard.service"
 
 export function TrainerDashboard() {
+  const [backendStatus, setBackendStatus] =
+    useState<DashboardAccessResponse | null>(null)
+
+  useEffect(() => {
+    getTrainerDashboardAccess()
+      .then((data) => setBackendStatus(data))
+      .catch(() => setBackendStatus(null))
+  }, [])
+
   return (
     <main className="min-h-screen bg-neutral-950 px-4 pt-24 pb-10 text-white sm:px-6">
       <section className="mx-auto max-w-7xl">
@@ -20,6 +34,17 @@ export function TrainerDashboard() {
                 Administra tus alumnos asignados, revisa sus objetivos y crea
                 rutinas personalizadas según su progreso físico.
               </p>
+
+              {backendStatus && (
+                <div className="mt-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3">
+                  <p className="text-sm font-bold text-yellow-500">
+                    {backendStatus.message}
+                  </p>
+                  <p className="mt-1 text-xs text-neutral-400">
+                    Usuario autenticado: {backendStatus.user}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex w-full items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4 md:w-auto md:px-5">
@@ -141,16 +166,6 @@ export function TrainerDashboard() {
                 Asignar Rutina
               </button>
             </form>
-
-            <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-yellow-500">
-                Próxima mejora
-              </p>
-              <p className="mt-2 text-sm text-neutral-400">
-                Luego este formulario guardará rutinas reales en PostgreSQL
-                mediante el backend de Spring Boot.
-              </p>
-            </div>
           </aside>
         </section>
       </section>

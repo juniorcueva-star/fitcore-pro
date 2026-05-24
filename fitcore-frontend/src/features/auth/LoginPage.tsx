@@ -1,29 +1,9 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Dumbbell, Lock, Mail } from "lucide-react"
-import type { AuthUser, LoginFormData } from "./auth.types"
-import { getAuthUser, getDefaultPathByRole, saveAuthUser } from "./auth.utils"
-
-const demoUsers: AuthUser[] = [
-  {
-    id: 1,
-    name: "Administrador FitCore",
-    email: "admin@fitcore.com",
-    role: "ADMIN",
-  },
-  {
-    id: 2,
-    name: "Coach Lucía",
-    email: "coach@fitcore.com",
-    role: "TRAINER",
-  },
-  {
-    id: 3,
-    name: "Carlos Mendoza",
-    email: "alumno@fitcore.com",
-    role: "STUDENT",
-  },
-]
+import type { LoginFormData } from "./auth.types"
+import { loginRequest } from "./auth.service"
+import { getAuthUser, getDefaultPathByRole, saveAuthSession } from "./auth.utils"
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -34,6 +14,7 @@ export function LoginPage() {
   })
 
   const [errorMessage, setErrorMessage] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
     const currentUser = getAuthUser()
@@ -52,7 +33,7 @@ export function LoginPage() {
     setErrorMessage("")
   }
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     const email = formData.email.trim().toLowerCase()
     const password = formData.password.trim()
 
@@ -61,15 +42,29 @@ export function LoginPage() {
       return
     }
 
-    const user = demoUsers.find((demoUser) => demoUser.email === email)
+    try {
+      setIsLoading(true)
+      setErrorMessage("")
 
-    if (!user) {
-      setErrorMessage("Usuario no encontrado. Usa una cuenta de demostración.")
-      return
+      const data = await loginRequest({
+        email,
+        password,
+      })
+
+      const user = {
+        id: data.id,
+        fullName: data.fullName,
+        email: data.email,
+        role: data.role,
+      }
+
+      saveAuthSession(user, data.token)
+      navigate(getDefaultPathByRole(user.role))
+    } catch {
+      setErrorMessage("Correo o contraseña incorrectos.")
+    } finally {
+      setIsLoading(false)
     }
-
-    saveAuthUser(user)
-    navigate(getDefaultPathByRole(user.role))
   }
 
   return (
@@ -84,8 +79,7 @@ export function LoginPage() {
         </h1>
 
         <p className="mt-3 text-center text-sm leading-6 text-neutral-400">
-          Accede a tu plataforma fitness profesional para gestionar rutinas,
-          alumnos y entrenamientos.
+          Accede a tu plataforma fitness profesional conectada al backend real.
         </p>
 
         <form className="mt-8 space-y-5">
@@ -136,15 +130,16 @@ export function LoginPage() {
           <button
             type="button"
             onClick={handleLogin}
-            className="w-full rounded-xl bg-yellow-500 px-4 py-3 font-bold text-black transition hover:bg-yellow-400 active:scale-[0.98]"
+            disabled={isLoading}
+            className="w-full rounded-xl bg-yellow-500 px-4 py-3 font-bold text-black transition hover:bg-yellow-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Iniciar Sesión
+            {isLoading ? "Iniciando sesión..." : "Iniciar Sesión"}
           </button>
         </form>
 
         <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-yellow-500">
-            Cuentas de demostración
+            Usuarios reales de prueba
           </p>
 
           <div className="mt-3 space-y-2 text-sm text-neutral-400">
@@ -169,8 +164,8 @@ export function LoginPage() {
           </div>
 
           <p className="mt-3 text-xs text-neutral-500">
-            Puedes usar cualquier contraseña por ahora. Luego conectaremos esto
-            con Spring Boot, JWT y PostgreSQL.
+            Contraseña para todos: 123456. Estos usuarios vienen desde
+            PostgreSQL y reciben token JWT.
           </p>
         </div>
       </section>

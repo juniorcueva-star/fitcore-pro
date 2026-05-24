@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react"
 import { LogOut } from "lucide-react"
 import { NavLink, useNavigate } from "react-router-dom"
+import { getMyProfileRequest } from "../../features/auth/auth.service"
+import type { UserProfileResponse } from "../../features/auth/auth.types"
 import { getAuthUser, logoutAuthUser } from "../../features/auth/auth.utils"
 
 const navigationItems = [
@@ -12,11 +15,42 @@ const navigationItems = [
 export function TopNavigation() {
   const navigate = useNavigate()
   const user = getAuthUser()
+  const userEmail = user?.email
+
+  const [profile, setProfile] = useState<UserProfileResponse | null>(null)
+
+  useEffect(() => {
+    if (!userEmail) {
+      return
+    }
+
+    let isActive = true
+
+    getMyProfileRequest()
+      .then((data) => {
+        if (isActive) {
+          setProfile(data)
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setProfile(null)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [userEmail])
 
   const handleLogout = () => {
     logoutAuthUser()
+    setProfile(null)
     navigate("/login", { replace: true })
   }
+
+  const displayName = profile?.fullName ?? user?.fullName
+  const displayRole = profile?.role ?? user?.role
 
   return (
     <header className="fixed left-0 top-0 z-50 w-full border-b border-neutral-800 bg-neutral-950/95 px-3 py-3 backdrop-blur">
@@ -49,9 +83,9 @@ export function TopNavigation() {
         {user && (
           <div className="hidden items-center gap-3 lg:flex">
             <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2">
-              <p className="text-sm font-bold text-white">{user.name}</p>
+              <p className="text-sm font-bold text-white">{displayName}</p>
               <p className="text-xs font-semibold text-yellow-500">
-                {user.role}
+                {displayRole}
               </p>
             </div>
 

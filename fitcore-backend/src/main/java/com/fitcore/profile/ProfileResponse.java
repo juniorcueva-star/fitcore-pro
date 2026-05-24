@@ -1,12 +1,12 @@
-package com.fitcore.auth;
+package com.fitcore.profile;
 
 import com.fitcore.user.Role;
 
-public record AuthResponse(
+public record ProfileResponse(
         Long id,
         String fullName,
         String email,
         Role role,
-        String token
+        Boolean active
 ) {
 }

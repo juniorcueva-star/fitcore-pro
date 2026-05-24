@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   CalendarDays,
   Check,
@@ -9,6 +9,10 @@ import {
   User,
 } from "lucide-react"
 import { todayRoutine } from "../../data/mockData"
+import {
+  getStudentDashboardAccess,
+  type DashboardAccessResponse,
+} from "../../services/dashboard.service"
 
 const bottomNavigationItems = [
   { label: "Inicio", icon: Home, active: true },
@@ -19,6 +23,14 @@ const bottomNavigationItems = [
 
 export function StudentApp() {
   const [completedExercises, setCompletedExercises] = useState<number[]>([])
+  const [backendStatus, setBackendStatus] =
+    useState<DashboardAccessResponse | null>(null)
+
+  useEffect(() => {
+    getStudentDashboardAccess()
+      .then((data) => setBackendStatus(data))
+      .catch(() => setBackendStatus(null))
+  }, [])
 
   const toggleExercise = (exerciseId: number) => {
     setCompletedExercises((currentExercises) =>
@@ -35,25 +47,34 @@ export function StudentApp() {
   return (
     <main className="min-h-screen bg-neutral-950 px-4 pt-24 pb-28 text-white">
       <section className="mx-auto max-w-md">
-        <header className="mb-5 flex items-center justify-between">
+        <header className="mb-5 flex items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold text-yellow-500">
               App del Alumno
             </p>
 
-            <h1 className="mt-1 text-3xl font-black">
-              ¡Hola, Carlos!
-            </h1>
+            <h1 className="mt-1 text-3xl font-black">¡Hola, Carlos!</h1>
 
             <p className="mt-1 text-sm text-neutral-400">
               Listo para entrenar hoy.
             </p>
+
+            {backendStatus && (
+              <div className="mt-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2">
+                <p className="text-xs font-bold text-yellow-500">
+                  {backendStatus.message}
+                </p>
+                <p className="mt-1 text-[11px] text-neutral-400">
+                  Usuario: {backendStatus.user}
+                </p>
+              </div>
+            )}
           </div>
 
           <img
             src="https://i.pravatar.cc/150?img=12"
             alt="Foto de perfil de Carlos"
-            className="h-14 w-14 rounded-full border-2 border-yellow-500 object-cover"
+            className="h-14 w-14 shrink-0 rounded-full border-2 border-yellow-500 object-cover"
           />
         </header>
 
@@ -70,9 +91,7 @@ export function StudentApp() {
                 Tu Entrenador Asignado
               </p>
 
-              <h2 className="mt-1 text-xl font-black">
-                Coach Lucía
-              </h2>
+              <h2 className="mt-1 text-xl font-black">Coach Lucía</h2>
 
               <p className="mt-1 text-xs text-neutral-500">
                 Especialista en fuerza e hipertrofia
@@ -121,9 +140,7 @@ export function StudentApp() {
         <section>
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-black">
-                Mi Rutina de Hoy
-              </h2>
+              <h2 className="text-xl font-black">Mi Rutina de Hoy</h2>
 
               <p className="mt-1 text-sm text-neutral-400">
                 Marca cada ejercicio al completarlo.

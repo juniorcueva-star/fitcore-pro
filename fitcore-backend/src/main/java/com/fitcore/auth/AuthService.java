@@ -12,6 +12,7 @@ public class AuthService {
 
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
 
     public AuthResponse login(LoginRequest request) {
         AppUser user = appUserRepository.findByEmail(request.email().toLowerCase().trim())
@@ -30,11 +31,14 @@ public class AuthService {
             throw new RuntimeException("Credenciales incorrectas");
         }
 
+        String token = jwtService.generateToken(user);
+
         return new AuthResponse(
                 user.getId(),
                 user.getFullName(),
                 user.getEmail(),
-                user.getRole()
+                user.getRole(),
+                token
         );
     }
 }
