@@ -1,16 +1,53 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { LogOut } from "lucide-react"
 import { NavLink, useNavigate } from "react-router-dom"
 import { getMyProfileRequest } from "../../features/auth/auth.service"
-import type { UserProfileResponse } from "../../features/auth/auth.types"
+import type {
+  UserProfileResponse,
+  UserRole,
+} from "../../features/auth/auth.types"
 import { getAuthUser, logoutAuthUser } from "../../features/auth/auth.utils"
 
-const navigationItems = [
-  { label: "Login", shortLabel: "Login", path: "/login" },
-  { label: "Admin", shortLabel: "Admin", path: "/admin" },
-  { label: "Entrenador", shortLabel: "Coach", path: "/entrenador" },
-  { label: "Alumno", shortLabel: "Alumno", path: "/alumno" },
+type NavigationItem = {
+  label: string
+  shortLabel: string
+  path: string
+  allowedRoles: UserRole[] | "PUBLIC"
+}
+
+const navigationItems: NavigationItem[] = [
+  {
+    label: "Login",
+    shortLabel: "Login",
+    path: "/login",
+    allowedRoles: "PUBLIC",
+  },
+  {
+    label: "Admin",
+    shortLabel: "Admin",
+    path: "/admin",
+    allowedRoles: ["ADMIN"],
+  },
+  {
+    label: "Entrenador",
+    shortLabel: "Coach",
+    path: "/entrenador",
+    allowedRoles: ["TRAINER"],
+  },
+  {
+    label: "Alumno",
+    shortLabel: "Alumno",
+    path: "/alumno",
+    allowedRoles: ["STUDENT"],
+  },
 ]
+
+function getRoleLabel(role?: UserRole) {
+  if (role === "ADMIN") return "Administrador"
+  if (role === "TRAINER") return "Entrenador"
+  if (role === "STUDENT") return "Alumno"
+  return ""
+}
 
 export function TopNavigation() {
   const navigate = useNavigate()
@@ -43,6 +80,20 @@ export function TopNavigation() {
     }
   }, [userEmail])
 
+  const visibleNavigationItems = useMemo(() => {
+    if (!user) {
+      return navigationItems.filter((item) => item.allowedRoles === "PUBLIC")
+    }
+
+    return navigationItems.filter((item) => {
+      if (item.allowedRoles === "PUBLIC") {
+        return false
+      }
+
+      return item.allowedRoles.includes(user.role)
+    })
+  }, [user])
+
   const handleLogout = () => {
     logoutAuthUser()
     setProfile(null)
@@ -50,7 +101,7 @@ export function TopNavigation() {
   }
 
   const displayName = profile?.fullName ?? user?.fullName
-  const displayRole = profile?.role ?? user?.role
+  const displayRole = getRoleLabel(profile?.role ?? user?.role)
 
   return (
     <header className="fixed left-0 top-0 z-50 w-full border-b border-neutral-800 bg-neutral-950/95 px-3 py-3 backdrop-blur">
@@ -61,23 +112,31 @@ export function TopNavigation() {
           </h1>
         </div>
 
-        <nav className="grid flex-1 grid-cols-4 gap-2 sm:max-w-xl">
-          {navigationItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) =>
-                `rounded-xl px-2 py-3 text-center text-xs font-bold transition active:scale-[0.97] sm:px-4 sm:text-sm ${
-                  isActive
-                    ? "bg-yellow-500 text-black"
-                    : "bg-neutral-900 text-neutral-400 hover:bg-neutral-800 hover:text-white"
-                }`
-              }
-            >
-              <span className="sm:hidden">{item.shortLabel}</span>
-              <span className="hidden sm:inline">{item.label}</span>
-            </NavLink>
-          ))}
+        <nav className="grid flex-1 gap-2 sm:max-w-xl">
+          <div
+            className={`grid gap-2 ${
+              visibleNavigationItems.length === 1
+                ? "grid-cols-1"
+                : "grid-cols-2 sm:grid-cols-4"
+            }`}
+          >
+            {visibleNavigationItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) =>
+                  `rounded-xl px-2 py-3 text-center text-xs font-bold transition active:scale-[0.97] sm:px-4 sm:text-sm ${
+                    isActive
+                      ? "bg-yellow-500 text-black"
+                      : "bg-neutral-900 text-neutral-400 hover:bg-neutral-800 hover:text-white"
+                  }`
+                }
+              >
+                <span className="sm:hidden">{item.shortLabel}</span>
+                <span className="hidden sm:inline">{item.label}</span>
+              </NavLink>
+            ))}
+          </div>
         </nav>
 
         {user && (

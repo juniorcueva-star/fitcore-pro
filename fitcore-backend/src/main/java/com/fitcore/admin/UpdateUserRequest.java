@@ -6,7 +6,7 @@ import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-public record CreateUserRequest(
+public record UpdateUserRequest(
         @NotBlank(message = "El nombre completo es obligatorio")
         @Size(min = 3, max = 120, message = "El nombre debe tener entre 3 y 120 caracteres")
         String fullName,
@@ -15,12 +15,11 @@ public record CreateUserRequest(
         @Email(message = "El correo electrónico no tiene un formato válido")
         String email,
 
-        @NotBlank(message = "La contraseña es obligatoria")
-        @Size(min = 6, max = 100, message = "La contraseña debe tener entre 6 y 100 caracteres")
-        String password,
-
         @NotNull(message = "El rol es obligatorio")
         Role role,
+
+        @NotNull(message = "El estado activo es obligatorio")
+        Boolean active,
 
         @Pattern(regexp = "^\\d{8}$", message = "El DNI debe tener exactamente 8 dígitos")
         String dni,

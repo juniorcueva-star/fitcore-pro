@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   CalendarDays,
   Check,
@@ -8,11 +8,17 @@ import {
   Trophy,
   User,
 } from "lucide-react"
-import { todayRoutine } from "../../data/mockData"
 import {
   getStudentDashboardAccess,
   type DashboardAccessResponse,
 } from "../../services/dashboard.service"
+import { getMyProfileRequest } from "../auth/auth.service"
+import type { UserProfileResponse } from "../auth/auth.types"
+import {
+  getStudentRoutinesRequest,
+  toggleStudentRoutineCompletedRequest,
+  type StudentRoutineResponse,
+} from "./student.service"
 
 const bottomNavigationItems = [
   { label: "Inicio", icon: Home, active: true },
@@ -21,28 +27,121 @@ const bottomNavigationItems = [
   { label: "Perfil", icon: User, active: false },
 ]
 
+function getFirstName(fullName?: string) {
+  if (!fullName) {
+    return "Alumno"
+  }
+
+  return fullName.trim().split(" ")[0]
+}
+
 export function StudentApp() {
-  const [completedExercises, setCompletedExercises] = useState<number[]>([])
+  const [profile, setProfile] = useState<UserProfileResponse | null>(null)
+
   const [backendStatus, setBackendStatus] =
     useState<DashboardAccessResponse | null>(null)
 
+  const [routines, setRoutines] = useState<StudentRoutineResponse[]>([])
+  const [isLoadingRoutines, setIsLoadingRoutines] = useState(true)
+  const [routinesError, setRoutinesError] = useState("")
+
   useEffect(() => {
-    getStudentDashboardAccess()
-      .then((data) => setBackendStatus(data))
-      .catch(() => setBackendStatus(null))
+    let isActive = true
+
+    getMyProfileRequest()
+      .then((data) => {
+        if (isActive) {
+          setProfile(data)
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setProfile(null)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
   }, [])
 
-  const toggleExercise = (exerciseId: number) => {
-    setCompletedExercises((currentExercises) =>
-      currentExercises.includes(exerciseId)
-        ? currentExercises.filter((id) => id !== exerciseId)
-        : [...currentExercises, exerciseId],
-    )
-  }
+  useEffect(() => {
+    let isActive = true
 
-  const totalExercises = todayRoutine.length
-  const completedCount = completedExercises.length
-  const progressPercentage = Math.round((completedCount / totalExercises) * 100)
+    getStudentDashboardAccess()
+      .then((data) => {
+        if (isActive) {
+          setBackendStatus(data)
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setBackendStatus(null)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let isActive = true
+
+    getStudentRoutinesRequest()
+      .then((data) => {
+        if (isActive) {
+          setRoutines(data)
+          setRoutinesError("")
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setRoutinesError("No se pudieron cargar tus rutinas.")
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoadingRoutines(false)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [])
+
+  const completedCount = useMemo(
+    () => routines.filter((routine) => routine.completed).length,
+    [routines],
+  )
+
+  const totalExercises = routines.length
+
+  const progressPercentage =
+    totalExercises === 0
+      ? 0
+      : Math.round((completedCount / totalExercises) * 100)
+
+  const studentFirstName = getFirstName(profile?.fullName)
+  const studentInitial = profile?.fullName?.charAt(0).toUpperCase() ?? "A"
+  const trainerName = routines[0]?.trainerName ?? "Sin entrenador asignado"
+
+  const handleToggleRoutine = async (routineId: number) => {
+    try {
+      const updatedRoutine = await toggleStudentRoutineCompletedRequest(
+        routineId,
+      )
+
+      setRoutines((currentRoutines) =>
+        currentRoutines.map((routine) =>
+          routine.id === updatedRoutine.id ? updatedRoutine : routine,
+        ),
+      )
+    } catch {
+      setRoutinesError("No se pudo actualizar el ejercicio.")
+    }
+  }
 
   return (
     <main className="min-h-screen bg-neutral-950 px-4 pt-24 pb-28 text-white">
@@ -53,7 +152,9 @@ export function StudentApp() {
               App del Alumno
             </p>
 
-            <h1 className="mt-1 text-3xl font-black">¡Hola, Carlos!</h1>
+            <h1 className="mt-1 text-3xl font-black">
+              ¡Hola, {studentFirstName}!
+            </h1>
 
             <p className="mt-1 text-sm text-neutral-400">
               Listo para entrenar hoy.
@@ -71,30 +172,26 @@ export function StudentApp() {
             )}
           </div>
 
-          <img
-            src="https://i.pravatar.cc/150?img=12"
-            alt="Foto de perfil de Carlos"
-            className="h-14 w-14 shrink-0 rounded-full border-2 border-yellow-500 object-cover"
-          />
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 border-yellow-500 bg-neutral-900 text-xl font-black text-yellow-500">
+            {studentInitial}
+          </div>
         </header>
 
         <article className="mb-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5 shadow-xl">
           <div className="flex items-center gap-4">
-            <img
-              src="https://i.pravatar.cc/150?img=47"
-              alt="Foto de Coach Lucía"
-              className="h-16 w-16 rounded-2xl object-cover"
-            />
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-yellow-500 text-2xl font-black text-black">
+              {trainerName.charAt(0).toUpperCase()}
+            </div>
 
             <div>
               <p className="text-sm text-neutral-400">
                 Tu Entrenador Asignado
               </p>
 
-              <h2 className="mt-1 text-xl font-black">Coach Lucía</h2>
+              <h2 className="mt-1 text-xl font-black">{trainerName}</h2>
 
               <p className="mt-1 text-xs text-neutral-500">
-                Especialista en fuerza e hipertrofia
+                Rutinas personalizadas desde FitCore Pro
               </p>
             </div>
           </div>
@@ -143,7 +240,7 @@ export function StudentApp() {
               <h2 className="text-xl font-black">Mi Rutina de Hoy</h2>
 
               <p className="mt-1 text-sm text-neutral-400">
-                Marca cada ejercicio al completarlo.
+                Rutinas reales asignadas por tu entrenador.
               </p>
             </div>
 
@@ -152,15 +249,31 @@ export function StudentApp() {
             </div>
           </div>
 
-          <div className="space-y-4">
-            {todayRoutine.map((exercise) => {
-              const isCompleted = completedExercises.includes(exercise.id)
+          {isLoadingRoutines && (
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-400">
+              Cargando tus rutinas...
+            </div>
+          )}
 
-              return (
+          {routinesError && (
+            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm font-semibold text-red-400">
+              {routinesError}
+            </div>
+          )}
+
+          {!isLoadingRoutines && !routinesError && routines.length === 0 && (
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-400">
+              Todavía no tienes rutinas asignadas.
+            </div>
+          )}
+
+          {!isLoadingRoutines && !routinesError && routines.length > 0 && (
+            <div className="space-y-4">
+              {routines.map((routine) => (
                 <article
-                  key={exercise.id}
+                  key={routine.id}
                   className={`flex items-center justify-between gap-4 rounded-2xl border p-4 transition ${
-                    isCompleted
+                    routine.completed
                       ? "border-yellow-500/70 bg-yellow-500/10"
                       : "border-neutral-800 bg-neutral-900"
                   }`}
@@ -168,33 +281,37 @@ export function StudentApp() {
                   <div>
                     <h3
                       className={`font-bold ${
-                        isCompleted ? "text-yellow-500" : "text-white"
+                        routine.completed ? "text-yellow-500" : "text-white"
                       }`}
                     >
-                      {exercise.name}
+                      {routine.exerciseName}
                     </h3>
 
                     <p className="mt-1 text-sm text-neutral-400">
-                      {exercise.sets} Series x {exercise.reps} Reps
+                      {routine.series} Series x {routine.repetitions} Reps
+                    </p>
+
+                    <p className="mt-1 text-xs text-neutral-500">
+                      Entrenador: {routine.trainerName}
                     </p>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => toggleExercise(exercise.id)}
+                    onClick={() => handleToggleRoutine(routine.id)}
                     className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border transition active:scale-95 ${
-                      isCompleted
+                      routine.completed
                         ? "border-yellow-500 bg-yellow-500 text-black"
                         : "border-neutral-700 bg-neutral-950 text-neutral-500 hover:border-yellow-500 hover:text-yellow-500"
                     }`}
-                    aria-label={`Marcar ${exercise.name} como completado`}
+                    aria-label={`Marcar ${routine.exerciseName} como completado`}
                   >
-                    {isCompleted && <Check size={24} strokeWidth={3} />}
+                    {routine.completed && <Check size={24} strokeWidth={3} />}
                   </button>
                 </article>
-              )
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
       </section>
 
