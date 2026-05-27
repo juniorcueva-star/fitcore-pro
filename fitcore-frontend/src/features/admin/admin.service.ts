@@ -1,12 +1,33 @@
 import { api } from "../../services/api"
 import type { UserRole } from "../auth/auth.types"
 
+export type MembershipPlan =
+  | "LIBRE"
+  | "MENSUAL"
+  | "TRIMESTRAL"
+  | "SEMESTRAL"
+  | "ANUAL"
+
+export type MembershipStatus =
+  | "NO_APLICA"
+  | "SIN_MEMBRESIA"
+  | "ACTIVA"
+  | "POR_VENCER"
+  | "VENCIDA"
+
 export type AdminUserResponse = {
   id: number
   fullName: string
   email: string
   role: UserRole
   active: boolean
+  dni: string | null
+  phoneNumber: string | null
+  membershipPlan: MembershipPlan | null
+  membershipAmount: number | null
+  membershipStartDate: string | null
+  membershipEndDate: string | null
+  membershipStatus: MembershipStatus
   createdAt: string
 }
 
@@ -15,6 +36,11 @@ export type CreateUserFormData = {
   email: string
   password: string
   role: UserRole
+  dni: string | null
+  phoneNumber: string | null
+  membershipPlan: MembershipPlan | null
+  membershipAmount: number | null
+  membershipStartDate: string | null
 }
 
 export type UpdateUserFormData = {
@@ -22,6 +48,22 @@ export type UpdateUserFormData = {
   email: string
   role: UserRole
   active: boolean
+  dni: string | null
+  phoneNumber: string | null
+  membershipPlan: MembershipPlan | null
+  membershipAmount: number | null
+  membershipStartDate: string | null
+}
+
+export type AttendanceResponse = {
+  id: number
+  studentId: number
+  studentName: string
+  dni: string
+  phoneNumber: string | null
+  membershipStatus: MembershipStatus
+  checkInAt: string
+  totalAttendances: number
 }
 
 export async function getAdminUsersRequest() {
@@ -51,4 +93,18 @@ export async function toggleAdminUserActiveRequest(id: number) {
 
 export async function deleteAdminUserRequest(id: number) {
   await api.delete(`/admin/users/${id}`)
+}
+
+export async function getAdminAttendancesRequest() {
+  const response = await api.get<AttendanceResponse[]>("/admin/attendances")
+  return response.data
+}
+
+export async function registerAttendanceByDniRequest(dni: string) {
+  const response = await api.post<AttendanceResponse>(
+    "/admin/attendances/check-in",
+    { dni },
+  )
+
+  return response.data
 }
