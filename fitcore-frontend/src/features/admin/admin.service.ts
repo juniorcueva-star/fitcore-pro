@@ -28,6 +28,8 @@ export type AdminUserResponse = {
   membershipStartDate: string | null
   membershipEndDate: string | null
   membershipStatus: MembershipStatus
+  coachId: number | null
+  coachName: string | null
   createdAt: string
 }
 
@@ -41,6 +43,7 @@ export type CreateUserFormData = {
   membershipPlan: MembershipPlan | null
   membershipAmount: number | null
   membershipStartDate: string | null
+  coachId: number | null
 }
 
 export type UpdateUserFormData = {
@@ -53,6 +56,7 @@ export type UpdateUserFormData = {
   membershipPlan: MembershipPlan | null
   membershipAmount: number | null
   membershipStartDate: string | null
+  coachId: number | null
 }
 
 export type AttendanceResponse = {

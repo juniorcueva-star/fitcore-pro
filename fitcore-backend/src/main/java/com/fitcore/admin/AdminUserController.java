@@ -56,10 +56,8 @@ public class AdminUserController {
 
     @GetMapping("/trainers")
     public ResponseEntity<List<UserResponse>> getTrainers() {
-        List<UserResponse> trainers = appUserRepository.findAll()
+        List<UserResponse> trainers = appUserRepository.findByRoleOrderByFullNameAsc(Role.TRAINER)
                 .stream()
-                .filter(user -> user.getRole() == Role.TRAINER)
-                .sorted(Comparator.comparing(AppUser::getId))
                 .map(this::toResponse)
                 .toList();
 
@@ -82,8 +80,7 @@ public class AdminUserController {
                 request.phoneNumber(),
                 request.membershipPlan(),
                 request.membershipAmount(),
-                request.membershipStartDate(),
-                null
+                request.membershipStartDate()
         );
 
         if (request.role() == Role.STUDENT && request.dni() != null) {
@@ -92,14 +89,16 @@ public class AdminUserController {
             }
         }
 
+        AppUser coach = resolveCoach(request.role(), request.coachId());
+
         AppUser user = AppUser.builder()
                 .fullName(request.fullName().trim())
                 .email(normalizedEmail)
                 .password(passwordEncoder.encode(request.password().trim()))
                 .role(request.role())
                 .active(true)
-                .dni(normalizeTextOrNull(request.dni()))
-                .phoneNumber(normalizeTextOrNull(request.phoneNumber()))
+                .dni(request.role() == Role.STUDENT ? normalizeTextOrNull(request.dni()) : null)
+                .phoneNumber(request.role() == Role.STUDENT ? normalizeTextOrNull(request.phoneNumber()) : null)
                 .membershipPlan(request.role() == Role.STUDENT ? request.membershipPlan() : null)
                 .membershipAmount(request.role() == Role.STUDENT ? request.membershipAmount() : null)
                 .membershipStartDate(request.role() == Role.STUDENT ? request.membershipStartDate() : null)
@@ -108,6 +107,7 @@ public class AdminUserController {
                                 ? calculateMembershipEndDate(request.membershipPlan(), request.membershipStartDate())
                                 : null
                 )
+                .coach(coach)
                 .build();
 
         AppUser savedUser = appUserRepository.save(user);
@@ -145,8 +145,7 @@ public class AdminUserController {
                 request.phoneNumber(),
                 request.membershipPlan(),
                 request.membershipAmount(),
-                request.membershipStartDate(),
-                id
+                request.membershipStartDate()
         );
 
         if (request.role() == Role.STUDENT && request.dni() != null) {
@@ -157,6 +156,8 @@ public class AdminUserController {
                         }
                     });
         }
+
+        AppUser coach = resolveCoach(request.role(), request.coachId());
 
         user.setFullName(request.fullName().trim());
         user.setEmail(normalizedEmail);
@@ -172,6 +173,7 @@ public class AdminUserController {
             user.setMembershipEndDate(
                     calculateMembershipEndDate(request.membershipPlan(), request.membershipStartDate())
             );
+            user.setCoach(coach);
         } else {
             user.setDni(null);
             user.setPhoneNumber(null);
@@ -179,6 +181,7 @@ public class AdminUserController {
             user.setMembershipAmount(null);
             user.setMembershipStartDate(null);
             user.setMembershipEndDate(null);
+            user.setCoach(null);
         }
 
         AppUser updatedUser = appUserRepository.save(user);
@@ -201,6 +204,21 @@ public class AdminUserController {
         return ResponseEntity.ok(toResponse(updatedUser));
     }
 
+    @PatchMapping("/{id}/remove-coach")
+    public ResponseEntity<UserResponse> removeCoach(@PathVariable Long id) {
+        AppUser user = findUserById(id);
+
+        if (user.getRole() != Role.STUDENT) {
+            throw new RuntimeException("Solo los alumnos pueden quedarse sin coach");
+        }
+
+        user.setCoach(null);
+
+        AppUser updatedUser = appUserRepository.save(user);
+
+        return ResponseEntity.ok(toResponse(updatedUser));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
         AppUser user = findUserById(id);
@@ -214,14 +232,31 @@ public class AdminUserController {
         return ResponseEntity.noContent().build();
     }
 
+    private AppUser resolveCoach(Role role, Long coachId) {
+        if (role != Role.STUDENT || coachId == null) {
+            return null;
+        }
+
+        AppUser coach = findUserById(coachId);
+
+        if (coach.getRole() != Role.TRAINER) {
+            throw new RuntimeException("El coach seleccionado no es entrenador");
+        }
+
+        if (!coach.getActive()) {
+            throw new RuntimeException("El coach seleccionado está inactivo");
+        }
+
+        return coach;
+    }
+
     private void validateStudentBusinessRules(
             Role role,
             String dni,
             String phoneNumber,
             MembershipPlan membershipPlan,
             java.math.BigDecimal membershipAmount,
-            LocalDate membershipStartDate,
-            Long currentUserId
+            LocalDate membershipStartDate
     ) {
         if (role != Role.STUDENT) {
             return;
@@ -307,6 +342,8 @@ public class AdminUserController {
     }
 
     private UserResponse toResponse(AppUser user) {
+        AppUser coach = user.getCoach();
+
         return new UserResponse(
                 user.getId(),
                 user.getFullName(),
@@ -320,6 +357,8 @@ public class AdminUserController {
                 user.getMembershipStartDate(),
                 user.getMembershipEndDate(),
                 calculateMembershipStatus(user),
+                coach != null ? coach.getId() : null,
+                coach != null ? coach.getFullName() : null,
                 user.getCreatedAt()
         );
     }

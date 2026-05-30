@@ -3,6 +3,7 @@ package com.fitcore.admin;
 import com.fitcore.user.MembershipPlan;
 import com.fitcore.user.Role;
 import jakarta.validation.constraints.*;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -33,6 +34,8 @@ public record CreateUserRequest(
         @DecimalMin(value = "0.0", inclusive = false, message = "El monto debe ser mayor a 0")
         BigDecimal membershipAmount,
 
-        LocalDate membershipStartDate
+        LocalDate membershipStartDate,
+
+        Long coachId
 ) {
 }

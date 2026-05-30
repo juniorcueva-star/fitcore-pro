@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { LogOut } from "lucide-react"
 import { NavLink, useNavigate } from "react-router-dom"
 import { getMyProfileRequest } from "../../features/auth/auth.service"
@@ -7,40 +7,6 @@ import type {
   UserRole,
 } from "../../features/auth/auth.types"
 import { getAuthUser, logoutAuthUser } from "../../features/auth/auth.utils"
-
-type NavigationItem = {
-  label: string
-  shortLabel: string
-  path: string
-  allowedRoles: UserRole[] | "PUBLIC"
-}
-
-const navigationItems: NavigationItem[] = [
-  {
-    label: "Login",
-    shortLabel: "Login",
-    path: "/login",
-    allowedRoles: "PUBLIC",
-  },
-  {
-    label: "Admin",
-    shortLabel: "Admin",
-    path: "/admin",
-    allowedRoles: ["ADMIN"],
-  },
-  {
-    label: "Entrenador",
-    shortLabel: "Coach",
-    path: "/entrenador",
-    allowedRoles: ["TRAINER"],
-  },
-  {
-    label: "Alumno",
-    shortLabel: "Alumno",
-    path: "/alumno",
-    allowedRoles: ["STUDENT"],
-  },
-]
 
 function getRoleLabel(role?: UserRole) {
   if (role === "ADMIN") return "Administrador"
@@ -80,20 +46,6 @@ export function TopNavigation() {
     }
   }, [userEmail])
 
-  const visibleNavigationItems = useMemo(() => {
-    if (!user) {
-      return navigationItems.filter((item) => item.allowedRoles === "PUBLIC")
-    }
-
-    return navigationItems.filter((item) => {
-      if (item.allowedRoles === "PUBLIC") {
-        return false
-      }
-
-      return item.allowedRoles.includes(user.role)
-    })
-  }, [user])
-
   const handleLogout = () => {
     logoutAuthUser()
     setProfile(null)
@@ -104,45 +56,56 @@ export function TopNavigation() {
   const displayRole = getRoleLabel(profile?.role ?? user?.role)
 
   return (
-    <header className="fixed left-0 top-0 z-50 w-full border-b border-neutral-800 bg-neutral-950/95 px-3 py-3 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center gap-3">
-        <div className="hidden shrink-0 sm:block">
+    <header className="fixed left-0 top-0 z-50 w-full border-b border-neutral-800 bg-neutral-950/95 px-4 py-3 backdrop-blur">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+        <button
+          type="button"
+          onClick={() => {
+            if (!user) {
+              navigate("/login")
+              return
+            }
+
+            if (user.role === "ADMIN") {
+              navigate("/admin")
+              return
+            }
+
+            if (user.role === "TRAINER") {
+              navigate("/entrenador")
+              return
+            }
+
+            navigate("/alumno")
+          }}
+          className="shrink-0 text-left"
+        >
           <h1 className="text-lg font-black text-white">
             FitCore <span className="text-yellow-500">Pro</span>
           </h1>
-        </div>
+        </button>
 
-        <nav className="grid flex-1 gap-2 sm:max-w-xl">
-          <div
-            className={`grid gap-2 ${
-              visibleNavigationItems.length === 1
-                ? "grid-cols-1"
-                : "grid-cols-2 sm:grid-cols-4"
-            }`}
+        {!user && (
+          <NavLink
+            to="/login"
+            className={({ isActive }) =>
+              `rounded-xl px-5 py-3 text-sm font-bold transition active:scale-[0.97] ${
+                isActive
+                  ? "bg-yellow-500 text-black"
+                  : "border border-neutral-800 bg-neutral-900 text-neutral-300 hover:border-yellow-500 hover:text-yellow-500"
+              }`
+            }
           >
-            {visibleNavigationItems.map((item) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) =>
-                  `rounded-xl px-2 py-3 text-center text-xs font-bold transition active:scale-[0.97] sm:px-4 sm:text-sm ${
-                    isActive
-                      ? "bg-yellow-500 text-black"
-                      : "bg-neutral-900 text-neutral-400 hover:bg-neutral-800 hover:text-white"
-                  }`
-                }
-              >
-                <span className="sm:hidden">{item.shortLabel}</span>
-                <span className="hidden sm:inline">{item.label}</span>
-              </NavLink>
-            ))}
-          </div>
-        </nav>
+            Iniciar sesión
+          </NavLink>
+        )}
 
         {user && (
-          <div className="hidden items-center gap-3 lg:flex">
-            <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2">
-              <p className="text-sm font-bold text-white">{displayName}</p>
+          <div className="flex items-center gap-3">
+            <div className="hidden rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2 sm:block">
+              <p className="max-w-48 truncate text-sm font-bold text-white">
+                {displayName}
+              </p>
               <p className="text-xs font-semibold text-yellow-500">
                 {displayRole}
               </p>
@@ -154,20 +117,9 @@ export function TopNavigation() {
               className="flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm font-bold text-neutral-300 transition hover:border-red-500/60 hover:bg-red-500/10 hover:text-red-400 active:scale-[0.97]"
             >
               <LogOut size={18} />
-              Cerrar sesión
+              <span className="hidden sm:inline">Cerrar sesión</span>
             </button>
           </div>
-        )}
-
-        {user && (
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-neutral-300 transition hover:border-red-500/60 hover:bg-red-500/10 hover:text-red-400 active:scale-[0.97] lg:hidden"
-            aria-label="Cerrar sesión"
-          >
-            <LogOut size={19} />
-          </button>
         )}
       </div>
     </header>

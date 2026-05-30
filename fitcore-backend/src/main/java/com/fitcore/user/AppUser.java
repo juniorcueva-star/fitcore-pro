@@ -53,6 +53,10 @@ public class AppUser {
 
     private LocalDate membershipEndDate;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "coach_id")
+    private AppUser coach;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

@@ -5,6 +5,9 @@ public record TrainerStudentResponse(
         String fullName,
         String email,
         Boolean active,
+        String dni,
+        String phoneNumber,
+        String membershipStatus,
         String goal
 ) {
 }

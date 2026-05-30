@@ -40,6 +40,7 @@ import type { UserRole } from "../auth/auth.types"
 type RoleFilter = "ALL" | UserRole
 type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE"
 type MembershipFilter = "ALL" | MembershipStatus
+type AdminSection = "dashboard" | "students" | "trainers" | "attendances"
 
 type CreateUserFormState = {
   fullName: string
@@ -51,6 +52,7 @@ type CreateUserFormState = {
   membershipPlan: MembershipPlan
   membershipAmount: string
   membershipStartDate: string
+  coachId: string
 }
 
 type EditUserFormState = {
@@ -63,13 +65,14 @@ type EditUserFormState = {
   membershipPlan: MembershipPlan
   membershipAmount: string
   membershipStartDate: string
+  coachId: string
 }
 
 const sidebarItems = [
-  { label: "Dashboard", icon: BarChart3, active: true },
-  { label: "Alumnos", icon: Users, active: false },
-  { label: "Entrenadores", icon: Shield, active: false },
-  { label: "Asistencias", icon: LogIn, active: false },
+  { label: "Dashboard", icon: BarChart3, target: "dashboard" },
+  { label: "Alumnos", icon: Users, target: "students" },
+  { label: "Entrenadores", icon: Shield, target: "trainers" },
+  { label: "Asistencias", icon: LogIn, target: "attendances" },
 ]
 
 const metricIcons = [Users, AlertTriangle, Wallet]
@@ -86,6 +89,7 @@ const initialCreateUserForm: CreateUserFormState = {
   membershipPlan: "MENSUAL",
   membershipAmount: "120",
   membershipStartDate: today,
+  coachId: "",
 }
 
 function formatRole(role: string) {
@@ -159,6 +163,7 @@ function buildCreatePayload(form: CreateUserFormState): CreateUserFormData {
     membershipPlan: isStudent ? form.membershipPlan : null,
     membershipAmount: isStudent ? Number(form.membershipAmount) : null,
     membershipStartDate: isStudent ? form.membershipStartDate : null,
+    coachId: isStudent && form.coachId ? Number(form.coachId) : null,
   }
 }
 
@@ -175,10 +180,14 @@ function buildUpdatePayload(form: EditUserFormState): UpdateUserFormData {
     membershipPlan: isStudent ? form.membershipPlan : null,
     membershipAmount: isStudent ? Number(form.membershipAmount) : null,
     membershipStartDate: isStudent ? form.membershipStartDate : null,
+    coachId: isStudent && form.coachId ? Number(form.coachId) : null,
   }
 }
 
 export function AdminDashboard() {
+  const [activeSection, setActiveSection] =
+    useState<AdminSection>("dashboard")
+
   const [backendStatus, setBackendStatus] =
     useState<DashboardAccessResponse | null>(null)
 
@@ -279,6 +288,7 @@ export function AdminDashboard() {
   }, [])
 
   const students = users.filter((user) => user.role === "STUDENT")
+  const trainers = users.filter((user) => user.role === "TRAINER" && user.active)
 
   const filteredUsers = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
@@ -459,6 +469,7 @@ export function AdminDashboard() {
       membershipPlan: user.membershipPlan ?? "MENSUAL",
       membershipAmount: String(user.membershipAmount ?? ""),
       membershipStartDate: user.membershipStartDate ?? today,
+      coachId: user.coachId ? String(user.coachId) : "",
     })
     setEditMessage("")
     setEditError("")
@@ -539,6 +550,7 @@ export function AdminDashboard() {
         membershipPlan: updatedUser.membershipPlan ?? "MENSUAL",
         membershipAmount: String(updatedUser.membershipAmount ?? ""),
         membershipStartDate: updatedUser.membershipStartDate ?? today,
+        coachId: updatedUser.coachId ? String(updatedUser.coachId) : "",
       })
       setEditMessage("Usuario actualizado correctamente.")
     } catch {
@@ -588,9 +600,13 @@ export function AdminDashboard() {
     }
   }
 
+  const handleSidebarSelect = (target: string) => {
+    setActiveSection(target as AdminSection)
+  }
+
   return (
     <main className="min-h-screen bg-neutral-950 pt-24 text-white">
-      <div className="mx-auto flex max-w-7xl gap-6 px-4 pb-10 sm:px-6">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 pb-10 sm:px-6 lg:flex-row">
         <aside className="hidden w-64 shrink-0 rounded-2xl border border-neutral-800 bg-neutral-900 p-5 lg:block">
           <div className="mb-8">
             <h2 className="text-2xl font-black">
@@ -608,8 +624,10 @@ export function AdminDashboard() {
               return (
                 <button
                   key={item.label}
+                  type="button"
+                  onClick={() => handleSidebarSelect(item.target)}
                   className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold transition active:scale-[0.98] ${
-                    item.active
+                    activeSection === item.target
                       ? "bg-yellow-500 text-black"
                       : "text-neutral-400 hover:bg-neutral-800 hover:text-white"
                   }`}
@@ -622,8 +640,32 @@ export function AdminDashboard() {
           </nav>
         </aside>
 
+        <div className="mb-4 grid grid-cols-2 gap-2 lg:hidden">
+          {sidebarItems.map((item) => {
+            const Icon = item.icon
+
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => handleSidebarSelect(item.target)}
+                className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-xs font-bold transition active:scale-[0.97] ${
+                  activeSection === item.target
+                    ? "bg-yellow-500 text-black"
+                    : "bg-neutral-900 text-neutral-400 hover:bg-neutral-800 hover:text-white"
+                }`}
+              >
+                <Icon size={17} />
+                {item.label}
+              </button>
+            )
+          })}
+        </div>
+
         <section className="min-w-0 flex-1">
-          <header className="mb-6 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-5">
+          <header
+            className={`${activeSection === "dashboard" ? "" : "hidden"} mb-6 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-5`}
+          >
             <p className="text-sm font-semibold text-yellow-500">
               Panel del Administrador
             </p>
@@ -649,7 +691,7 @@ export function AdminDashboard() {
             )}
           </header>
 
-          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <section className={`${activeSection === "dashboard" ? "grid" : "hidden"} gap-4 sm:grid-cols-2 lg:grid-cols-3`}>
             {metricsToShow.map((metric, index) => {
               const Icon = metricIcons[index]
 
@@ -679,7 +721,9 @@ export function AdminDashboard() {
             })}
           </section>
 
-          <section className="mt-6 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+          <section
+            className={`${activeSection === "attendances" ? "grid" : "hidden"} gap-6 lg:grid-cols-[0.8fr_1.2fr]`}
+          >
             <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl">
               <div className="mb-5">
                 <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-yellow-500 text-black">
@@ -798,7 +842,7 @@ export function AdminDashboard() {
             </article>
           </section>
 
-          <section className="mt-6 grid gap-6 lg:grid-cols-2">
+          <section className={`${activeSection === "dashboard" ? "grid" : "hidden"} mt-6 gap-6 lg:grid-cols-2`}>
             <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl">
               <h2 className="text-lg font-black">Membresías por vencer</h2>
               <p className="mt-1 text-sm text-neutral-400">
@@ -864,7 +908,60 @@ export function AdminDashboard() {
             </article>
           </section>
 
-          <section className="mt-6 grid gap-6 xl:grid-cols-[1.5fr_0.8fr]">
+          <section
+            className={`${activeSection === "trainers" ? "block" : "hidden"} rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-5`}
+          >
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black">Entrenadores</h2>
+                <p className="mt-1 text-sm text-neutral-400">
+                  Personal registrado con rol de entrenador.
+                </p>
+              </div>
+
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neutral-950 text-yellow-500">
+                <Shield size={22} />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {trainers.map((trainer) => (
+                  <article
+                    key={trainer.id}
+                    className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-yellow-500 text-lg font-black text-black">
+                        {trainer.fullName.charAt(0).toUpperCase()}
+                      </div>
+
+                      <div>
+                        <h3 className="font-bold text-white">
+                          {trainer.fullName}
+                        </h3>
+                        <p className="mt-1 text-sm text-neutral-400">
+                          {trainer.email}
+                        </p>
+                      </div>
+                    </div>
+
+                    <p className="mt-4 text-xs font-semibold text-neutral-500">
+                      Estado: {trainer.active ? "Activo" : "Inactivo"}
+                    </p>
+                  </article>
+                ))}
+
+              {trainers.length === 0 && (
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
+                  No hay entrenadores registrados.
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section
+            className={`${activeSection === "students" ? "grid" : "hidden"} gap-6 xl:grid-cols-[1.5fr_0.8fr]`}
+          >
             <article className="min-w-0 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-5">
               <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -958,7 +1055,7 @@ export function AdminDashboard() {
                 <div className="overflow-x-auto rounded-xl border border-neutral-800">
                   <table
                     className="w-full text-left text-sm"
-                    style={{ minWidth: "1150px" }}
+                    style={{ minWidth: "1300px" }}
                   >
                     <thead className="bg-neutral-950">
                       <tr className="border-b border-neutral-800 text-neutral-400">
@@ -968,6 +1065,7 @@ export function AdminDashboard() {
                         <th className="px-4 py-3 font-semibold">Celular</th>
                         <th className="px-4 py-3 font-semibold">Correo</th>
                         <th className="px-4 py-3 font-semibold">Rol</th>
+                        <th className="px-4 py-3 font-semibold">Coach</th>
                         <th className="px-4 py-3 font-semibold">Plan</th>
                         <th className="px-4 py-3 font-semibold">Pago</th>
                         <th className="px-4 py-3 font-semibold">Vence</th>
@@ -1001,6 +1099,9 @@ export function AdminDashboard() {
                             <span className="rounded-full bg-yellow-500/10 px-3 py-1 text-xs font-bold text-yellow-500">
                               {formatRole(user.role)}
                             </span>
+                          </td>
+                          <td className="px-4 py-4 text-neutral-400">
+                            {user.coachName ?? "Sin coach"}
                           </td>
                           <td className="px-4 py-4 text-neutral-400">
                             {formatPlan(user.membershipPlan)}
@@ -1195,6 +1296,21 @@ export function AdminDashboard() {
                         }
                         className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-yellow-500"
                       />
+
+                      <select
+                        value={createUserForm.coachId}
+                        onChange={(event) =>
+                          handleCreateUserChange("coachId", event.target.value)
+                        }
+                        className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-yellow-500"
+                      >
+                        <option value="">Sin coach</option>
+                        {trainers.map((trainer) => (
+                          <option key={trainer.id} value={trainer.id}>
+                            {trainer.fullName}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   )}
 
@@ -1357,6 +1473,21 @@ export function AdminDashboard() {
                           }
                           className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-yellow-500"
                         />
+
+                        <select
+                          value={editUserForm.coachId}
+                          onChange={(event) =>
+                            handleEditUserChange("coachId", event.target.value)
+                          }
+                          className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-yellow-500"
+                        >
+                          <option value="">Sin coach</option>
+                          {trainers.map((trainer) => (
+                            <option key={trainer.id} value={trainer.id}>
+                              {trainer.fullName}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     )}
 

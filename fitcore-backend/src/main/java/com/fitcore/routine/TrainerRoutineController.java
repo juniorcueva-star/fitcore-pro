@@ -35,6 +35,10 @@ public class TrainerRoutineController {
             throw new RuntimeException("El usuario seleccionado no es alumno");
         }
 
+        if (student.getCoach() == null || !student.getCoach().getId().equals(trainer.getId())) {
+            throw new RuntimeException("Solo puedes asignar rutinas a tus propios alumnos");
+        }
+
         RoutineExercise exercise = RoutineExercise.builder()
                 .exerciseName(request.exerciseName().trim())
                 .series(request.series())

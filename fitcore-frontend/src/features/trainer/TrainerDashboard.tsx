@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
+  Apple,
   CheckCircle2,
   ClipboardList,
   Dumbbell,
+  LogOut,
   Plus,
+  Salad,
   Target,
   Users,
 } from "lucide-react"
@@ -15,10 +18,14 @@ import {
   createTrainerRoutineRequest,
   getTrainerRoutinesRequest,
   getTrainerStudentsRequest,
+  removeTrainerStudentRequest,
   type CreateRoutineExerciseFormData,
+  type MembershipStatus,
   type RoutineExerciseResponse,
   type TrainerStudentResponse,
 } from "./trainer.service"
+
+type TrainerSection = "students" | "routines" | "nutrition"
 
 const initialRoutineForm: CreateRoutineExerciseFormData = {
   studentId: 0,
@@ -27,13 +34,39 @@ const initialRoutineForm: CreateRoutineExerciseFormData = {
   repetitions: 12,
 }
 
+const sectionItems = [
+  { key: "students", label: "Mis alumnos", icon: Users },
+  { key: "routines", label: "Rutinas", icon: Dumbbell },
+  { key: "nutrition", label: "Alimentación", icon: Salad },
+] as const
+
+function formatMembershipStatus(status: MembershipStatus) {
+  if (status === "ACTIVA") return "Activa"
+  if (status === "POR_VENCER") return "Por vencer"
+  if (status === "VENCIDA") return "Vencida"
+  if (status === "SIN_MEMBRESIA") return "Sin membresía"
+  return "No aplica"
+}
+
+function getMembershipStatusClass(status: MembershipStatus) {
+  if (status === "ACTIVA") return "bg-emerald-500/10 text-emerald-400"
+  if (status === "POR_VENCER") return "bg-yellow-500/10 text-yellow-500"
+  if (status === "VENCIDA") return "bg-red-500/10 text-red-400"
+  return "bg-neutral-800 text-neutral-400"
+}
+
 export function TrainerDashboard() {
+  const [activeSection, setActiveSection] = useState<TrainerSection>("students")
+
   const [backendStatus, setBackendStatus] =
     useState<DashboardAccessResponse | null>(null)
 
   const [students, setStudents] = useState<TrainerStudentResponse[]>([])
+  const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null)
   const [isLoadingStudents, setIsLoadingStudents] = useState(true)
   const [studentsError, setStudentsError] = useState("")
+  const [studentActionMessage, setStudentActionMessage] = useState("")
+  const [studentActionError, setStudentActionError] = useState("")
 
   const [routines, setRoutines] = useState<RoutineExerciseResponse[]>([])
   const [isLoadingRoutines, setIsLoadingRoutines] = useState(true)
@@ -74,11 +107,29 @@ export function TrainerDashboard() {
         if (isActive) {
           setStudents(data)
           setStudentsError("")
+          setSelectedStudentId((currentSelectedId) => {
+            if (currentSelectedId) {
+              const stillExists = data.some(
+                (student) => student.id === currentSelectedId,
+              )
+
+              if (stillExists) {
+                return currentSelectedId
+              }
+            }
+
+            return data[0]?.id ?? null
+          })
+
+          setRoutineForm((currentForm) => ({
+            ...currentForm,
+            studentId: data[0]?.id ?? 0,
+          }))
         }
       })
       .catch(() => {
         if (isActive) {
-          setStudentsError("No se pudieron cargar los alumnos reales.")
+          setStudentsError("No se pudieron cargar tus alumnos.")
         }
       })
       .finally(() => {
@@ -118,6 +169,34 @@ export function TrainerDashboard() {
     }
   }, [])
 
+  const selectedStudent = useMemo(
+    () => students.find((student) => student.id === selectedStudentId) ?? null,
+    [students, selectedStudentId],
+  )
+
+  const selectedStudentRoutines = useMemo(() => {
+    if (!selectedStudentId) {
+      return []
+    }
+
+    return routines.filter((routine) => routine.studentId === selectedStudentId)
+  }, [routines, selectedStudentId])
+
+  const completedSelectedRoutines = selectedStudentRoutines.filter(
+    (routine) => routine.completed,
+  ).length
+
+  const progressPercentage =
+    selectedStudentRoutines.length === 0
+      ? 0
+      : Math.round(
+          (completedSelectedRoutines / selectedStudentRoutines.length) * 100,
+        )
+
+  const completedRoutinesCount = routines.filter(
+    (routine) => routine.completed,
+  ).length
+
   const handleRoutineFormChange = (
     field: keyof CreateRoutineExerciseFormData,
     value: string,
@@ -130,8 +209,22 @@ export function TrainerDashboard() {
           : value,
     }))
 
+    if (field === "studentId") {
+      setSelectedStudentId(Number(value) || null)
+    }
+
     setRoutineMessage("")
     setRoutineError("")
+  }
+
+  const handleSelectStudent = (studentId: number) => {
+    setSelectedStudentId(studentId)
+    setRoutineForm((currentForm) => ({
+      ...currentForm,
+      studentId,
+    }))
+    setStudentActionMessage("")
+    setStudentActionError("")
   }
 
   const handleCreateRoutine = async () => {
@@ -165,12 +258,60 @@ export function TrainerDashboard() {
       })
 
       setRoutines((currentRoutines) => [newRoutine, ...currentRoutines])
-      setRoutineForm(initialRoutineForm)
+      setRoutineForm({
+        ...initialRoutineForm,
+        studentId: routineForm.studentId,
+      })
       setRoutineMessage("Rutina asignada correctamente.")
     } catch {
-      setRoutineError("No se pudo asignar la rutina.")
+      setRoutineError(
+        "No se pudo asignar la rutina. Verifica que el alumno pertenezca a tu lista.",
+      )
     } finally {
       setIsCreatingRoutine(false)
+    }
+  }
+
+  const handleRemoveStudent = async (studentId: number) => {
+    const confirmed = window.confirm(
+      "¿Seguro que deseas expulsar este alumno de tu lista?",
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setStudentActionError("")
+      setStudentActionMessage("")
+
+      const response = await removeTrainerStudentRequest(studentId)
+
+      setStudents((currentStudents) =>
+        currentStudents.filter((student) => student.id !== studentId),
+      )
+
+      setRoutines((currentRoutines) =>
+        currentRoutines.filter((routine) => routine.studentId !== studentId),
+      )
+
+      setSelectedStudentId((currentSelectedId) => {
+        if (currentSelectedId !== studentId) {
+          return currentSelectedId
+        }
+
+        const nextStudent = students.find((student) => student.id !== studentId)
+        return nextStudent?.id ?? null
+      })
+
+      setRoutineForm((currentForm) => ({
+        ...currentForm,
+        studentId: 0,
+      }))
+
+      setStudentActionMessage(response.message)
+    } catch {
+      setStudentActionError("No se pudo expulsar al alumno.")
     }
   }
 
@@ -182,15 +323,16 @@ export function TrainerDashboard() {
             Panel del Entrenador
           </p>
 
-          <div className="mt-3 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="mt-3 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <h1 className="text-2xl font-black sm:text-3xl">
-                Gestión de Alumnos y Rutinas
+                Mis alumnos, rutinas y alimentación
               </h1>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-400">
-                Administra alumnos reales registrados en PostgreSQL y asigna
-                rutinas personalizadas desde el panel.
+                Gestiona solo los alumnos que te eligieron como coach. Puedes
+                asignar ejercicios, revisar progreso y preparar planes de
+                alimentación.
               </p>
 
               {backendStatus && (
@@ -205,98 +347,240 @@ export function TrainerDashboard() {
               )}
             </div>
 
-            <div className="flex w-full items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4 md:w-auto md:px-5">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-yellow-500 text-black">
-                <Users size={24} />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4">
+                <p className="text-sm text-neutral-400">Mis alumnos</p>
+                <p className="text-2xl font-black">{students.length}</p>
               </div>
 
-              <div>
-                <p className="text-sm text-neutral-400">Mis Alumnos</p>
-                <p className="text-2xl font-black">
-                  {students.length} asignados
-                </p>
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4">
+                <p className="text-sm text-neutral-400">Rutinas</p>
+                <p className="text-2xl font-black">{routines.length}</p>
+              </div>
+
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4">
+                <p className="text-sm text-neutral-400">Completadas</p>
+                <p className="text-2xl font-black">{completedRoutinesCount}</p>
               </div>
             </div>
           </div>
         </header>
 
-        <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-6">
-            <div className="mb-5 flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-black">Alumnos Reales</h2>
+        <section className="mb-6 grid gap-3 sm:grid-cols-3">
+          {sectionItems.map((item) => {
+            const Icon = item.icon
+            const isActive = activeSection === item.key
+
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setActiveSection(item.key)}
+                className={`flex items-center justify-center gap-2 rounded-2xl px-4 py-4 text-sm font-bold transition active:scale-[0.98] ${
+                  isActive
+                    ? "bg-yellow-500 text-black"
+                    : "border border-neutral-800 bg-neutral-900 text-neutral-400 hover:border-yellow-500/50 hover:text-white"
+                }`}
+              >
+                <Icon size={20} />
+                {item.label}
+              </button>
+            )
+          })}
+        </section>
+
+        {activeSection === "students" && (
+          <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-6">
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-black">Mis alumnos</h2>
+                  <p className="mt-1 text-sm text-neutral-400">
+                    Solo aparecen alumnos que te eligieron como coach.
+                  </p>
+                </div>
+
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neutral-950 text-yellow-500">
+                  <Users size={24} />
+                </div>
+              </div>
+
+              {studentActionError && (
+                <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm font-semibold text-red-400">
+                  {studentActionError}
+                </div>
+              )}
+
+              {studentActionMessage && (
+                <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm font-semibold text-emerald-400">
+                  {studentActionMessage}
+                </div>
+              )}
+
+              {isLoadingStudents && (
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
+                  Cargando alumnos...
+                </div>
+              )}
+
+              {studentsError && (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm font-semibold text-red-400">
+                  {studentsError}
+                </div>
+              )}
+
+              {!isLoadingStudents && !studentsError && students.length === 0 && (
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
+                  Todavía no tienes alumnos asignados.
+                </div>
+              )}
+
+              {!isLoadingStudents && !studentsError && students.length > 0 && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {students.map((student) => {
+                    const isSelected = selectedStudentId === student.id
+
+                    return (
+                      <button
+                        key={student.id}
+                        type="button"
+                        onClick={() => handleSelectStudent(student.id)}
+                        className={`rounded-2xl border p-4 text-left transition hover:-translate-y-1 ${
+                          isSelected
+                            ? "border-yellow-500 bg-yellow-500/10"
+                            : "border-neutral-800 bg-neutral-950 hover:border-yellow-500/60"
+                        }`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-yellow-500 text-xl font-black text-black">
+                            {student.fullName.charAt(0).toUpperCase()}
+                          </div>
+
+                          <div>
+                            <h3 className="font-bold text-white">
+                              {student.fullName}
+                            </h3>
+                            <p className="mt-1 text-sm text-neutral-400">
+                              {student.email}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-bold ${getMembershipStatusClass(
+                              student.membershipStatus,
+                            )}`}
+                          >
+                            {formatMembershipStatus(student.membershipStatus)}
+                          </span>
+
+                          <span className="rounded-full bg-neutral-800 px-3 py-1 text-xs font-bold text-neutral-400">
+                            DNI: {student.dni ?? "-"}
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </article>
+
+            <aside className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-6">
+              <div className="mb-5">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-yellow-500 text-black">
+                  <Target size={24} />
+                </div>
+
+                <h2 className="text-xl font-black">Detalle del alumno</h2>
                 <p className="mt-1 text-sm text-neutral-400">
-                  Alumnos activos creados desde el panel Admin.
+                  Revisa rutinas, alimentación y progreso diario.
                 </p>
               </div>
 
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neutral-950 text-yellow-500">
-                <Dumbbell size={24} />
-              </div>
-            </div>
+              {!selectedStudent && (
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
+                  Selecciona un alumno para ver su información.
+                </div>
+              )}
 
-            {isLoadingStudents && (
-              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
-                Cargando alumnos reales...
-              </div>
-            )}
+              {selectedStudent && (
+                <div>
+                  <h3 className="text-2xl font-black">
+                    {selectedStudent.fullName}
+                  </h3>
+                  <p className="mt-2 text-sm text-neutral-400">
+                    {selectedStudent.email}
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-400">
+                    DNI: {selectedStudent.dni ?? "-"} · Celular:{" "}
+                    {selectedStudent.phoneNumber ?? "-"}
+                  </p>
 
-            {studentsError && (
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm font-semibold text-red-400">
-                {studentsError}
-              </div>
-            )}
+                  <div className="mt-5 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                    <p className="text-sm text-neutral-400">
+                      Progreso de rutinas asignadas
+                    </p>
 
-            {!isLoadingStudents && !studentsError && students.length === 0 && (
-              <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
-                No hay alumnos activos registrados todavía.
-              </div>
-            )}
+                    <p className="mt-2 text-2xl font-black">
+                      {completedSelectedRoutines}/{selectedStudentRoutines.length}
+                    </p>
 
-            {!isLoadingStudents && !studentsError && students.length > 0 && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {students.map((student) => (
-                  <div
-                    key={student.id}
-                    className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4 transition hover:-translate-y-1 hover:border-yellow-500/60"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-yellow-500 text-xl font-black text-black">
-                        {student.fullName.charAt(0).toUpperCase()}
-                      </div>
-
-                      <div>
-                        <h3 className="font-bold text-white">
-                          {student.fullName}
-                        </h3>
-                        <p className="mt-1 text-sm text-neutral-400">
-                          {student.email}
-                        </p>
-                      </div>
+                    <div className="mt-3 h-3 overflow-hidden rounded-full bg-neutral-800">
+                      <div
+                        className="h-full rounded-full bg-yellow-500 transition-all"
+                        style={{ width: `${progressPercentage}%` }}
+                      />
                     </div>
 
-                    <div className="mt-4 flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2">
-                      <Target size={17} className="text-yellow-500" />
-                      <span className="text-xs font-semibold text-neutral-400">
-                        Objetivo: {student.goal}
-                      </span>
-                    </div>
+                    <p className="mt-2 text-sm text-yellow-500">
+                      {progressPercentage}% completado
+                    </p>
                   </div>
-                ))}
-              </div>
-            )}
-          </article>
 
-          <aside className="space-y-6">
-            <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-6">
+                  <div className="mt-5 space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => setActiveSection("routines")}
+                      className="w-full rounded-xl bg-yellow-500 px-4 py-3 font-bold text-black transition hover:bg-yellow-400 active:scale-[0.98]"
+                    >
+                      Asignar nueva rutina
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveSection("nutrition")}
+                      className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 font-bold text-neutral-300 transition hover:border-yellow-500 hover:text-yellow-500 active:scale-[0.98]"
+                    >
+                      Crear alimentación
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveStudent(selectedStudent.id)}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 font-bold text-red-400 transition hover:bg-red-500/20 active:scale-[0.98]"
+                    >
+                      <LogOut size={18} />
+                      Expulsar alumno de mi lista
+                    </button>
+                  </div>
+                </div>
+              )}
+            </aside>
+          </section>
+        )}
+
+        {activeSection === "routines" && (
+          <section className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+            <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-6">
               <div className="mb-6">
                 <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-yellow-500 text-black">
                   <ClipboardList size={24} />
                 </div>
 
-                <h2 className="text-xl font-black">Asignar Rutina</h2>
+                <h2 className="text-xl font-black">Asignar rutina</h2>
                 <p className="mt-2 text-sm leading-6 text-neutral-400">
-                  Selecciona un alumno real y registra su ejercicio.
+                  Selecciona uno de tus alumnos y registra su ejercicio.
                 </p>
               </div>
 
@@ -395,13 +679,13 @@ export function TrainerDashboard() {
                   {isCreatingRoutine ? "Asignando..." : "Asignar Rutina"}
                 </button>
               </form>
-            </section>
+            </article>
 
-            <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-6">
+            <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-6">
               <div className="mb-5">
-                <h2 className="text-xl font-black">Rutinas Asignadas</h2>
+                <h2 className="text-xl font-black">Rutinas asignadas</h2>
                 <p className="mt-1 text-sm text-neutral-400">
-                  Ejercicios guardados en PostgreSQL.
+                  Ejercicios asignados a tus alumnos.
                 </p>
               </div>
 
@@ -457,9 +741,86 @@ export function TrainerDashboard() {
                   ))}
                 </div>
               )}
-            </section>
-          </aside>
-        </section>
+            </article>
+          </section>
+        )}
+
+        {activeSection === "nutrition" && (
+          <section className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+            <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-6">
+              <div className="mb-6">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-yellow-500 text-black">
+                  <Apple size={24} />
+                </div>
+
+                <h2 className="text-xl font-black">Plan de alimentación</h2>
+                <p className="mt-2 text-sm leading-6 text-neutral-400">
+                  En la siguiente etapa conectaremos este formulario al backend.
+                  El coach podrá crear desayuno, almuerzo, cena y meriendas.
+                </p>
+              </div>
+
+              <form className="space-y-4">
+                <select className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition focus:border-yellow-500">
+                  <option>Selecciona un alumno</option>
+                  {students.map((student) => (
+                    <option key={student.id}>{student.fullName}</option>
+                  ))}
+                </select>
+
+                <textarea
+                  placeholder="Desayuno"
+                  rows={3}
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
+                />
+
+                <textarea
+                  placeholder="Merienda entre desayuno y almuerzo"
+                  rows={3}
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
+                />
+
+                <textarea
+                  placeholder="Almuerzo"
+                  rows={3}
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
+                />
+
+                <textarea
+                  placeholder="Merienda entre almuerzo y cena"
+                  rows={3}
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
+                />
+
+                <textarea
+                  placeholder="Cena"
+                  rows={3}
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
+                />
+
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-500 px-4 py-3 font-bold text-black transition hover:bg-yellow-400 active:scale-[0.98]"
+                >
+                  <Plus size={20} />
+                  Guardar alimentación
+                </button>
+              </form>
+            </article>
+
+            <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-6">
+              <h2 className="text-xl font-black">Vista previa</h2>
+              <p className="mt-1 text-sm text-neutral-400">
+                Aquí se mostrarán los planes de alimentación guardados por
+                alumno.
+              </p>
+
+              <div className="mt-5 rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
+                Todavía no hay planes de alimentación conectados al backend.
+              </div>
+            </article>
+          </section>
+        )}
       </section>
     </main>
   )

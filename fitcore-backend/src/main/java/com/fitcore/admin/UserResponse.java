@@ -20,6 +20,8 @@ public record UserResponse(
         LocalDate membershipStartDate,
         LocalDate membershipEndDate,
         String membershipStatus,
+        Long coachId,
+        String coachName,
         LocalDateTime createdAt
 ) {
 }

@@ -8,7 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
-import java.util.Comparator;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -31,21 +31,85 @@ public class TrainerTestController {
     }
 
     @GetMapping("/students")
-    public ResponseEntity<List<TrainerStudentResponse>> getStudents() {
-        List<TrainerStudentResponse> students = appUserRepository.findAll()
+    public ResponseEntity<List<TrainerStudentResponse>> getMyStudents(
+            Principal principal
+    ) {
+        AppUser trainer = appUserRepository.findByEmail(principal.getName())
+                .orElseThrow(() -> new RuntimeException("Entrenador no encontrado"));
+
+        List<TrainerStudentResponse> students = appUserRepository
+                .findByCoachAndRoleOrderByFullNameAsc(trainer, Role.STUDENT)
                 .stream()
-                .filter(user -> user.getRole() == Role.STUDENT)
                 .filter(AppUser::getActive)
-                .sorted(Comparator.comparing(AppUser::getId))
-                .map(user -> new TrainerStudentResponse(
-                        user.getId(),
-                        user.getFullName(),
-                        user.getEmail(),
-                        user.getActive(),
-                        "Hipertrofia"
-                ))
+                .map(this::toResponse)
                 .toList();
 
         return ResponseEntity.ok(students);
+    }
+
+    @PatchMapping("/students/{studentId}/remove")
+    public ResponseEntity<Map<String, String>> removeStudentFromCoach(
+            Principal principal,
+            @PathVariable Long studentId
+    ) {
+        AppUser trainer = appUserRepository.findByEmail(principal.getName())
+                .orElseThrow(() -> new RuntimeException("Entrenador no encontrado"));
+
+        AppUser student = appUserRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Alumno no encontrado"));
+
+        if (student.getRole() != Role.STUDENT) {
+            throw new RuntimeException("El usuario seleccionado no es alumno");
+        }
+
+        if (student.getCoach() == null || !student.getCoach().getId().equals(trainer.getId())) {
+            throw new RuntimeException("Este alumno no pertenece a tu lista");
+        }
+
+        student.setCoach(null);
+        appUserRepository.save(student);
+
+        return ResponseEntity.ok(
+                Map.of("message", "Alumno expulsado correctamente de tu lista")
+        );
+    }
+
+    private TrainerStudentResponse toResponse(AppUser user) {
+        return new TrainerStudentResponse(
+                user.getId(),
+                user.getFullName(),
+                user.getEmail(),
+                user.getActive(),
+                user.getDni(),
+                user.getPhoneNumber(),
+                calculateMembershipStatus(user),
+                "Hipertrofia"
+        );
+    }
+
+    private String calculateMembershipStatus(AppUser user) {
+        if (user.getRole() != Role.STUDENT) {
+            return "NO_APLICA";
+        }
+
+        if (user.getMembershipPlan() == null || user.getMembershipStartDate() == null) {
+            return "SIN_MEMBRESIA";
+        }
+
+        if (user.getMembershipEndDate() == null) {
+            return "ACTIVA";
+        }
+
+        LocalDate today = LocalDate.now();
+
+        if (user.getMembershipEndDate().isBefore(today)) {
+            return "VENCIDA";
+        }
+
+        if (!user.getMembershipEndDate().isAfter(today.plusDays(5))) {
+            return "POR_VENCER";
+        }
+
+        return "ACTIVA";
     }
 }
