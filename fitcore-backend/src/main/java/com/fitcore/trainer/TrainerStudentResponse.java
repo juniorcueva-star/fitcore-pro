@@ -8,6 +8,7 @@ public record TrainerStudentResponse(
         String dni,
         String phoneNumber,
         String membershipStatus,
-        String goal
+        String goal,
+        String profilePhotoUrl
 ) {
 }

@@ -7,6 +7,7 @@ public record ProfileResponse(
         String fullName,
         String email,
         Role role,
-        Boolean active
+        Boolean active,
+        String profilePhotoUrl
 ) {
 }

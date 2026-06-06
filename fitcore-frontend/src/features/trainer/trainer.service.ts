@@ -14,6 +14,7 @@ export type TrainerStudentResponse = {
   active: boolean
   dni: string | null
   phoneNumber: string | null
+  profilePhotoUrl?: string | null
   membershipStatus: MembershipStatus
   goal: string
 }
@@ -39,6 +40,30 @@ export type CreateRoutineExerciseFormData = {
   repetitions: number
 }
 
+export type NutritionPlanResponse = {
+  id: number
+  studentId: number
+  studentName: string
+  trainerId: number
+  trainerName: string
+  breakfast: string | null
+  morningSnack: string | null
+  lunch: string | null
+  afternoonSnack: string | null
+  dinner: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type SaveNutritionPlanFormData = {
+  studentId: number
+  breakfast: string
+  morningSnack: string
+  lunch: string
+  afternoonSnack: string
+  dinner: string
+}
+
 export async function getTrainerStudentsRequest() {
   const response = await api.get<TrainerStudentResponse[]>("/trainer/students")
   return response.data
@@ -48,7 +73,6 @@ export async function removeTrainerStudentRequest(studentId: number) {
   const response = await api.patch<{ message: string }>(
     `/trainer/students/${studentId}/remove`,
   )
-
   return response.data
 }
 
@@ -62,6 +86,22 @@ export async function createTrainerRoutineRequest(
 ) {
   const response = await api.post<RoutineExerciseResponse>(
     "/trainer/routines",
+    data,
+  )
+
+  return response.data
+}
+
+export async function getTrainerNutritionPlansRequest() {
+  const response = await api.get<NutritionPlanResponse[]>("/trainer/nutrition")
+  return response.data
+}
+
+export async function saveTrainerNutritionPlanRequest(
+  data: SaveNutritionPlanFormData,
+) {
+  const response = await api.post<NutritionPlanResponse>(
+    "/trainer/nutrition",
     data,
   )
 

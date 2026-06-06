@@ -15,6 +15,8 @@ public record UserResponse(
         Boolean active,
         String dni,
         String phoneNumber,
+        String fitnessGoal,
+        String profilePhotoUrl,
         MembershipPlan membershipPlan,
         BigDecimal membershipAmount,
         LocalDate membershipStartDate,

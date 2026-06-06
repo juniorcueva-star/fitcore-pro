@@ -1,11 +1,13 @@
 package com.fitcore.admin;
 
 import com.fitcore.user.AppUser;
+import org.springframework.transaction.annotation.Transactional;
 import com.fitcore.user.AppUserRepository;
 import com.fitcore.user.MembershipPlan;
 import com.fitcore.user.Role;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -20,7 +22,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AdminUserController {
 
-    private static final String MAIN_ADMIN_EMAIL = "admin@fitcore.com";
+    @Value("${app.main-admin.email}")
+    private String mainAdminEmail;
 
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
@@ -99,6 +102,7 @@ public class AdminUserController {
                 .active(true)
                 .dni(request.role() == Role.STUDENT ? normalizeTextOrNull(request.dni()) : null)
                 .phoneNumber(request.role() == Role.STUDENT ? normalizeTextOrNull(request.phoneNumber()) : null)
+                .fitnessGoal(request.role() == Role.STUDENT ? normalizeTextOrNull(request.fitnessGoal()) : null)
                 .membershipPlan(request.role() == Role.STUDENT ? request.membershipPlan() : null)
                 .membershipAmount(request.role() == Role.STUDENT ? request.membershipAmount() : null)
                 .membershipStartDate(request.role() == Role.STUDENT ? request.membershipStartDate() : null)
@@ -116,15 +120,16 @@ public class AdminUserController {
     }
 
     @PutMapping("/{id}")
+    @Transactional
     public ResponseEntity<UserResponse> updateUser(
-            @PathVariable Long id,
-            @Valid @RequestBody UpdateUserRequest request
+        @PathVariable Long id,
+        @Valid @RequestBody UpdateUserRequest request
     ) {
         AppUser user = findUserById(id);
 
         String normalizedEmail = request.email().trim().toLowerCase();
 
-        if (isMainAdmin(user) && !normalizedEmail.equals(MAIN_ADMIN_EMAIL)) {
+        if (isMainAdmin(user) && !normalizedEmail.equals(mainAdminEmail)) {
             throw new RuntimeException("No puedes cambiar el correo del administrador principal");
         }
 
@@ -167,6 +172,7 @@ public class AdminUserController {
         if (request.role() == Role.STUDENT) {
             user.setDni(normalizeTextOrNull(request.dni()));
             user.setPhoneNumber(normalizeTextOrNull(request.phoneNumber()));
+            user.setFitnessGoal(normalizeTextOrNull(request.fitnessGoal()));
             user.setMembershipPlan(request.membershipPlan());
             user.setMembershipAmount(request.membershipAmount());
             user.setMembershipStartDate(request.membershipStartDate());
@@ -177,6 +183,7 @@ public class AdminUserController {
         } else {
             user.setDni(null);
             user.setPhoneNumber(null);
+            user.setFitnessGoal(null);
             user.setMembershipPlan(null);
             user.setMembershipAmount(null);
             user.setMembershipStartDate(null);
@@ -213,6 +220,20 @@ public class AdminUserController {
         }
 
         user.setCoach(null);
+
+        AppUser updatedUser = appUserRepository.save(user);
+
+        return ResponseEntity.ok(toResponse(updatedUser));
+    }
+
+    @PatchMapping("/{id}/reset-password")
+    public ResponseEntity<UserResponse> resetUserPassword(
+            @PathVariable Long id,
+            @Valid @RequestBody ResetPasswordRequest request
+    ) {
+        AppUser user = findUserById(id);
+
+        user.setPassword(passwordEncoder.encode(request.newPassword().trim()));
 
         AppUser updatedUser = appUserRepository.save(user);
 
@@ -323,13 +344,13 @@ public class AdminUserController {
         return "ACTIVA";
     }
 
-    private AppUser findUserById(Long id) {
-        return appUserRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+  private AppUser findUserById(Long id) {
+         return appUserRepository.findByIdWithCoach(id)
+            .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
     }
 
     private boolean isMainAdmin(AppUser user) {
-        return user.getEmail().equalsIgnoreCase(MAIN_ADMIN_EMAIL);
+        return user.getEmail().equalsIgnoreCase(mainAdminEmail);
     }
 
     private String normalizeTextOrNull(String value) {
@@ -352,6 +373,8 @@ public class AdminUserController {
                 user.getActive(),
                 user.getDni(),
                 user.getPhoneNumber(),
+                user.getFitnessGoal(),
+                user.getProfilePhotoUrl(),
                 user.getMembershipPlan(),
                 user.getMembershipAmount(),
                 user.getMembershipStartDate(),

@@ -75,17 +75,18 @@ public class TrainerTestController {
     }
 
     private TrainerStudentResponse toResponse(AppUser user) {
-        return new TrainerStudentResponse(
-                user.getId(),
-                user.getFullName(),
-                user.getEmail(),
-                user.getActive(),
-                user.getDni(),
-                user.getPhoneNumber(),
-                calculateMembershipStatus(user),
-                "Hipertrofia"
-        );
-    }
+    return new TrainerStudentResponse(
+            user.getId(),
+            user.getFullName(),
+            user.getEmail(),
+            user.getActive(),
+            user.getDni(),
+            user.getPhoneNumber(),
+            calculateMembershipStatus(user),
+            user.getFitnessGoal(),
+            user.getProfilePhotoUrl()
+    );
+}
 
     private String calculateMembershipStatus(AppUser user) {
         if (user.getRole() != Role.STUDENT) {

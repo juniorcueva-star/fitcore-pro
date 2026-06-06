@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
@@ -14,19 +14,19 @@ import {
   Trash2,
   Users,
   Wallet,
-} from "lucide-react"
-import { adminMetrics } from "../../data/mockData"
+  ImageUp,
+} from "lucide-react";
+import { adminMetrics } from "../../data/mockData";
 import {
   getAdminDashboardAccess,
   type DashboardAccessResponse,
-} from "../../services/dashboard.service"
+} from "../../services/dashboard.service";
 import {
   createAdminUserRequest,
   deleteAdminUserRequest,
   getAdminAttendancesRequest,
   getAdminUsersRequest,
   registerAttendanceByDniRequest,
-  toggleAdminUserActiveRequest,
   updateAdminUserRequest,
   type AdminUserResponse,
   type AttendanceResponse,
@@ -34,50 +34,55 @@ import {
   type MembershipPlan,
   type MembershipStatus,
   type UpdateUserFormData,
-} from "./admin.service"
-import type { UserRole } from "../auth/auth.types"
+} from "./admin.service";
+import { getMyProfileRequest } from "../auth/auth.service";
+import type { UserProfileResponse, UserRole } from "../auth/auth.types";
+import {
+  removeProfilePhotoRequest,
+  uploadProfilePhotoRequest,
+} from "../profile/profile.service";
 
-type RoleFilter = "ALL" | UserRole
-type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE"
-type MembershipFilter = "ALL" | MembershipStatus
-type AdminSection = "dashboard" | "students" | "trainers" | "attendances"
+type RoleFilter = "ALL" | UserRole;
+type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
+type MembershipFilter = "ALL" | MembershipStatus;
+type AdminSection = "dashboard" | "students" | "trainers" | "attendances";
 
 type CreateUserFormState = {
-  fullName: string
-  email: string
-  password: string
-  role: UserRole
-  dni: string
-  phoneNumber: string
-  membershipPlan: MembershipPlan
-  membershipAmount: string
-  membershipStartDate: string
-  coachId: string
-}
+  fullName: string;
+  email: string;
+  password: string;
+  role: UserRole;
+  dni: string;
+  phoneNumber: string;
+  membershipPlan: MembershipPlan;
+  membershipAmount: string;
+  membershipStartDate: string;
+  coachId: string;
+};
 
 type EditUserFormState = {
-  fullName: string
-  email: string
-  role: UserRole
-  active: boolean
-  dni: string
-  phoneNumber: string
-  membershipPlan: MembershipPlan
-  membershipAmount: string
-  membershipStartDate: string
-  coachId: string
-}
+  fullName: string;
+  email: string;
+  role: UserRole;
+  active: boolean;
+  dni: string;
+  phoneNumber: string;
+  membershipPlan: MembershipPlan;
+  membershipAmount: string;
+  membershipStartDate: string;
+  coachId: string;
+};
 
 const sidebarItems = [
   { label: "Dashboard", icon: BarChart3, target: "dashboard" },
   { label: "Alumnos", icon: Users, target: "students" },
   { label: "Entrenadores", icon: Shield, target: "trainers" },
   { label: "Asistencias", icon: LogIn, target: "attendances" },
-]
+];
 
-const metricIcons = [Users, AlertTriangle, Wallet]
+const metricIcons = [Users, AlertTriangle, Wallet];
 
-const today = new Date().toISOString().slice(0, 10)
+const today = new Date().toISOString().slice(0, 10);
 
 const initialCreateUserForm: CreateUserFormState = {
   fullName: "",
@@ -90,68 +95,164 @@ const initialCreateUserForm: CreateUserFormState = {
   membershipAmount: "120",
   membershipStartDate: today,
   coachId: "",
-}
+};
 
 function formatRole(role: string) {
-  if (role === "ADMIN") return "Administrador"
-  if (role === "TRAINER") return "Entrenador"
-  return "Alumno"
+  if (role === "ADMIN") return "Administrador";
+  if (role === "TRAINER") return "Entrenador";
+  return "Alumno";
 }
 
 function formatPlan(plan?: MembershipPlan | null) {
-  if (!plan) return "Sin plan"
-  if (plan === "LIBRE") return "Libre"
-  if (plan === "MENSUAL") return "1 mes"
-  if (plan === "TRIMESTRAL") return "3 meses"
-  if (plan === "SEMESTRAL") return "6 meses"
-  return "1 año"
+  if (!plan) return "Sin plan";
+  if (plan === "LIBRE") return "Libre";
+  if (plan === "MENSUAL") return "1 mes";
+  if (plan === "TRIMESTRAL") return "3 meses";
+  if (plan === "SEMESTRAL") return "6 meses";
+  return "1 año";
 }
 
 function formatMembershipStatus(status: MembershipStatus) {
-  if (status === "ACTIVA") return "Activa"
-  if (status === "POR_VENCER") return "Por vencer"
-  if (status === "VENCIDA") return "Vencida"
-  if (status === "SIN_MEMBRESIA") return "Sin membresía"
-  return "No aplica"
+  if (status === "ACTIVA") return "Activa";
+  if (status === "POR_VENCER") return "Por vencer";
+  if (status === "VENCIDA") return "Vencida";
+  if (status === "SIN_MEMBRESIA") return "Sin membresía";
+  return "No aplica";
 }
 
 function getMembershipStatusClass(status: MembershipStatus) {
-  if (status === "ACTIVA") return "bg-emerald-500/10 text-emerald-400"
-  if (status === "POR_VENCER") return "bg-yellow-500/10 text-yellow-500"
-  if (status === "VENCIDA") return "bg-red-500/10 text-red-400"
-  return "bg-neutral-800 text-neutral-400"
+  if (status === "ACTIVA") return "bg-emerald-500/10 text-emerald-400";
+  if (status === "POR_VENCER") return "bg-yellow-500/10 text-yellow-500";
+  if (status === "VENCIDA") return "bg-red-500/10 text-red-400";
+  return "bg-neutral-800 text-neutral-400";
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return "-"
+  if (!value) return "-";
   return new Intl.DateTimeFormat("es-PE", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-  }).format(new Date(`${value}T00:00:00`))
+  }).format(new Date(`${value}T00:00:00`));
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return "-"
+  if (!value) return "-";
   return new Intl.DateTimeFormat("es-PE", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value))
+  }).format(new Date(value));
 }
 
 function formatMoney(value?: number | null) {
-  if (value === null || value === undefined) return "-"
+  if (value === null || value === undefined) return "-";
   return new Intl.NumberFormat("es-PE", {
     style: "currency",
     currency: "PEN",
-  }).format(value)
+  }).format(value);
+}
+
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api";
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
+
+function getProfilePhotoSrc(profilePhotoUrl?: string | null) {
+  if (!profilePhotoUrl) return null;
+
+  if (
+    profilePhotoUrl.startsWith("http://") ||
+    profilePhotoUrl.startsWith("https://")
+  ) {
+    return profilePhotoUrl;
+  }
+
+  return `${API_ORIGIN}${profilePhotoUrl}`;
+}
+
+function getInitials(fullName?: string | null) {
+  if (!fullName) return "FW";
+
+  const words = fullName.trim().split(/\s+/).filter(Boolean);
+
+  if (words.length === 0) return "FW";
+  if (words.length === 1) return words[0].charAt(0).toUpperCase();
+
+  return `${words[0].charAt(0)}${words[1].charAt(0)}`.toUpperCase();
+}
+
+function ProfileAvatar({
+  fullName,
+  profilePhotoUrl,
+  className,
+  fallbackClassName,
+}: {
+  fullName?: string | null;
+  profilePhotoUrl?: string | null;
+  className: string;
+  fallbackClassName: string;
+}) {
+  const photoSrc = getProfilePhotoSrc(profilePhotoUrl);
+
+  if (photoSrc) {
+    return (
+      <img
+        src={photoSrc}
+        alt={fullName ? `Foto de ${fullName}` : "Foto de perfil"}
+        className={`${className} object-cover`}
+      />
+    );
+  }
+
+  return (
+    <div className={`${className} ${fallbackClassName}`}>
+      {getInitials(fullName)}
+    </div>
+  );
+}
+
+function calculateMembershipEndDatePreview(
+  plan: MembershipPlan,
+  startDate: string,
+) {
+  if (!startDate) {
+    return "Selecciona una fecha de inicio";
+  }
+
+  if (plan === "LIBRE") {
+    return "Sin fecha final";
+  }
+
+  const date = new Date(`${startDate}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  const endDate = new Date(date);
+
+  if (plan === "MENSUAL") {
+    endDate.setMonth(endDate.getMonth() + 1);
+  }
+
+  if (plan === "TRIMESTRAL") {
+    endDate.setMonth(endDate.getMonth() + 3);
+  }
+
+  if (plan === "SEMESTRAL") {
+    endDate.setMonth(endDate.getMonth() + 6);
+  }
+
+  if (plan === "ANUAL") {
+    endDate.setFullYear(endDate.getFullYear() + 1);
+  }
+
+  return formatDate(endDate.toISOString().slice(0, 10));
 }
 
 function buildCreatePayload(form: CreateUserFormState): CreateUserFormData {
-  const isStudent = form.role === "STUDENT"
+  const isStudent = form.role === "STUDENT";
 
   return {
     fullName: form.fullName.trim(),
@@ -164,11 +265,11 @@ function buildCreatePayload(form: CreateUserFormState): CreateUserFormData {
     membershipAmount: isStudent ? Number(form.membershipAmount) : null,
     membershipStartDate: isStudent ? form.membershipStartDate : null,
     coachId: isStudent && form.coachId ? Number(form.coachId) : null,
-  }
+  };
 }
 
 function buildUpdatePayload(form: EditUserFormState): UpdateUserFormData {
-  const isStudent = form.role === "STUDENT"
+  const isStudent = form.role === "STUDENT";
 
   return {
     fullName: form.fullName.trim(),
@@ -181,156 +282,198 @@ function buildUpdatePayload(form: EditUserFormState): UpdateUserFormData {
     membershipAmount: isStudent ? Number(form.membershipAmount) : null,
     membershipStartDate: isStudent ? form.membershipStartDate : null,
     coachId: isStudent && form.coachId ? Number(form.coachId) : null,
-  }
+  };
 }
 
 export function AdminDashboard() {
-  const [activeSection, setActiveSection] =
-    useState<AdminSection>("dashboard")
+  const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
 
   const [backendStatus, setBackendStatus] =
-    useState<DashboardAccessResponse | null>(null)
+    useState<DashboardAccessResponse | null>(null);
 
-  const [users, setUsers] = useState<AdminUserResponse[]>([])
-  const [isLoadingUsers, setIsLoadingUsers] = useState(true)
-  const [usersError, setUsersError] = useState("")
+  const [users, setUsers] = useState<AdminUserResponse[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+  const [usersError, setUsersError] = useState("");
 
-  const [attendances, setAttendances] = useState<AttendanceResponse[]>([])
-  const [isLoadingAttendances, setIsLoadingAttendances] = useState(true)
-  const [attendanceDni, setAttendanceDni] = useState("")
-  const [attendanceMessage, setAttendanceMessage] = useState("")
-  const [attendanceError, setAttendanceError] = useState("")
-  const [isRegisteringAttendance, setIsRegisteringAttendance] = useState(false)
+  const [attendances, setAttendances] = useState<AttendanceResponse[]>([]);
+  const [isLoadingAttendances, setIsLoadingAttendances] = useState(true);
+  const [attendanceDni, setAttendanceDni] = useState("");
+  const [attendanceMessage, setAttendanceMessage] = useState("");
+  const [attendanceError, setAttendanceError] = useState("");
+  const [isRegisteringAttendance, setIsRegisteringAttendance] = useState(false);
 
-  const [searchTerm, setSearchTerm] = useState("")
-  const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL")
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [membershipFilter, setMembershipFilter] =
-    useState<MembershipFilter>("ALL")
+    useState<MembershipFilter>("ALL");
 
-  const [createUserForm, setCreateUserForm] =
-    useState<CreateUserFormState>(initialCreateUserForm)
-  const [isCreatingUser, setIsCreatingUser] = useState(false)
-  const [createUserMessage, setCreateUserMessage] = useState("")
-  const [createUserError, setCreateUserError] = useState("")
+  const [createUserForm, setCreateUserForm] = useState<CreateUserFormState>(
+    initialCreateUserForm,
+  );
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [createUserMessage, setCreateUserMessage] = useState("");
+  const [createUserError, setCreateUserError] = useState("");
 
-  const [editingUser, setEditingUser] = useState<AdminUserResponse | null>(null)
+  const [editingUser, setEditingUser] = useState<AdminUserResponse | null>(
+    null,
+  );
   const [editUserForm, setEditUserForm] = useState<EditUserFormState | null>(
     null,
-  )
-  const [editMessage, setEditMessage] = useState("")
-  const [editError, setEditError] = useState("")
-  const [isSavingEdit, setIsSavingEdit] = useState(false)
+  );
+  const [editMessage, setEditMessage] = useState("");
+  const [editError, setEditError] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+
+  const [profile, setProfile] = useState<UserProfileResponse | null>(null);
+  const [isUploadingProfilePhoto, setIsUploadingProfilePhoto] = useState(false);
+  const [profilePhotoMessage, setProfilePhotoMessage] = useState("");
+  const [profilePhotoError, setProfilePhotoError] = useState("");
+
+  const editUserSectionRef = useRef<HTMLElement | null>(null);
+  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    let isActive = true
+    let isActive = true;
 
     getAdminDashboardAccess()
       .then((data) => {
-        if (isActive) setBackendStatus(data)
+        if (isActive) setBackendStatus(data);
       })
       .catch(() => {
-        if (isActive) setBackendStatus(null)
-      })
+        if (isActive) setBackendStatus(null);
+      });
 
     return () => {
-      isActive = false
-    }
-  }, [])
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
-    let isActive = true
+    let isActive = true;
+
+    getMyProfileRequest()
+      .then((data) => {
+        if (isActive) {
+          setProfile(data);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setProfile(null);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
 
     getAdminUsersRequest()
       .then((data) => {
         if (isActive) {
-          setUsers(data)
-          setUsersError("")
+          setUsers(data);
+          setUsersError("");
         }
       })
       .catch(() => {
         if (isActive) {
-          setUsersError("No se pudieron cargar los usuarios reales.")
+          setUsersError("No se pudieron cargar los usuarios reales.");
         }
       })
       .finally(() => {
-        if (isActive) setIsLoadingUsers(false)
-      })
+        if (isActive) setIsLoadingUsers(false);
+      });
 
     return () => {
-      isActive = false
-    }
-  }, [])
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
-    let isActive = true
+    let isActive = true;
 
     getAdminAttendancesRequest()
       .then((data) => {
         if (isActive) {
-          setAttendances(data)
+          setAttendances(data);
         }
       })
       .catch(() => {
         if (isActive) {
-          setAttendances([])
+          setAttendances([]);
         }
       })
       .finally(() => {
         if (isActive) {
-          setIsLoadingAttendances(false)
+          setIsLoadingAttendances(false);
         }
-      })
+      });
 
     return () => {
-      isActive = false
-    }
-  }, [])
+      isActive = false;
+    };
+  }, []);
 
-  const students = users.filter((user) => user.role === "STUDENT")
-  const trainers = users.filter((user) => user.role === "TRAINER" && user.active)
+  useEffect(() => {
+    if (!editingUser) return;
+
+    editUserSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, [editingUser]);
+
+  const students = users.filter((user) => user.role === "STUDENT");
+  const trainers = users.filter(
+    (user) => user.role === "TRAINER" && user.active,
+  );
 
   const filteredUsers = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase()
+    const normalizedSearch = searchTerm.trim().toLowerCase();
 
     return users.filter((user) => {
       const matchesSearch =
         user.fullName.toLowerCase().includes(normalizedSearch) ||
         user.email.toLowerCase().includes(normalizedSearch) ||
         (user.dni ?? "").includes(normalizedSearch) ||
-        (user.phoneNumber ?? "").includes(normalizedSearch)
+        (user.phoneNumber ?? "").includes(normalizedSearch);
 
       const matchesRole =
-        roleFilter === "ALL" ? true : user.role === roleFilter
+        roleFilter === "ALL" ? true : user.role === roleFilter;
 
       const matchesStatus =
         statusFilter === "ALL"
           ? true
           : statusFilter === "ACTIVE"
             ? user.active
-            : !user.active
+            : !user.active;
 
       const matchesMembership =
         membershipFilter === "ALL"
           ? true
-          : user.membershipStatus === membershipFilter
+          : user.membershipStatus === membershipFilter;
 
-      return matchesSearch && matchesRole && matchesStatus && matchesMembership
-    })
-  }, [users, searchTerm, roleFilter, statusFilter, membershipFilter])
+      return matchesSearch && matchesRole && matchesStatus && matchesMembership;
+    });
+  }, [users, searchTerm, roleFilter, statusFilter, membershipFilter]);
 
   const realMetrics = useMemo(() => {
     const activeStudentsCount = students.filter(
       (user) => user.membershipStatus === "ACTIVA",
-    ).length
+    ).length;
 
     const expiringStudentsCount = students.filter(
       (user) => user.membershipStatus === "POR_VENCER",
-    ).length
+    ).length;
 
     const totalIncome = students.reduce((total, user) => {
-      return total + (user.membershipAmount ?? 0)
-    }, 0)
+      return total + (user.membershipAmount ?? 0);
+    }, 0);
 
     return [
       {
@@ -348,20 +491,32 @@ export function AdminDashboard() {
         value: formatMoney(totalIncome),
         description: "Suma de membresías registradas",
       },
-    ]
-  }, [students])
+    ];
+  }, [students]);
 
-  const metricsToShow = users.length > 0 ? realMetrics : adminMetrics
+  const metricsToShow = users.length > 0 ? realMetrics : adminMetrics;
+
+  const createMembershipEndDatePreview = calculateMembershipEndDatePreview(
+    createUserForm.membershipPlan,
+    createUserForm.membershipStartDate,
+  );
+
+  const editMembershipEndDatePreview = editUserForm
+    ? calculateMembershipEndDatePreview(
+        editUserForm.membershipPlan,
+        editUserForm.membershipStartDate,
+      )
+    : "-";
 
   const studentsExpiring = students.filter(
     (user) => user.membershipStatus === "POR_VENCER",
-  )
+  );
 
   const studentsExpired = students.filter(
     (user) => user.membershipStatus === "VENCIDA",
-  )
+  );
 
-  const recentAttendances = attendances.slice(0, 6)
+  const recentAttendances = attendances.slice(0, 6);
 
   const handleCreateUserChange = (
     field: keyof CreateUserFormState,
@@ -370,95 +525,96 @@ export function AdminDashboard() {
     setCreateUserForm((currentForm) => ({
       ...currentForm,
       [field]: value,
-    }))
+    }));
 
-    setCreateUserMessage("")
-    setCreateUserError("")
-  }
+    setCreateUserMessage("");
+    setCreateUserError("");
+  };
 
   const handleCreateUser = async () => {
-    const payload = buildCreatePayload(createUserForm)
+    const payload = buildCreatePayload(createUserForm);
 
     if (!payload.fullName || !payload.email || !payload.password) {
-      setCreateUserError("Completa nombre, correo y contraseña.")
-      return
+      setCreateUserError("Completa nombre, correo y contraseña.");
+      return;
     }
 
     if (payload.password.length < 6) {
-      setCreateUserError("La contraseña debe tener mínimo 6 caracteres.")
-      return
+      setCreateUserError("La contraseña debe tener mínimo 6 caracteres.");
+      return;
     }
 
     if (payload.role === "STUDENT") {
       if (!payload.dni || !payload.phoneNumber) {
-        setCreateUserError("Para alumnos debes ingresar DNI y celular.")
-        return
+        setCreateUserError("Para alumnos debes ingresar DNI y celular.");
+        return;
       }
 
       if (!payload.membershipPlan || !payload.membershipAmount) {
-        setCreateUserError("Para alumnos debes ingresar plan y monto.")
-        return
+        setCreateUserError("Para alumnos debes ingresar plan y monto.");
+        return;
       }
 
       if (!payload.membershipStartDate) {
-        setCreateUserError("Selecciona la fecha de inicio de membresía.")
-        return
+        setCreateUserError("Selecciona la fecha de inicio de membresía.");
+        return;
       }
     }
 
     try {
-      setIsCreatingUser(true)
-      setCreateUserError("")
-      setCreateUserMessage("")
+      setIsCreatingUser(true);
+      setCreateUserError("");
+      setCreateUserMessage("");
 
-      const newUser = await createAdminUserRequest(payload)
+      const newUser = await createAdminUserRequest(payload);
 
-      setUsers((currentUsers) => [...currentUsers, newUser])
-      setCreateUserForm(initialCreateUserForm)
-      setCreateUserMessage("Usuario creado correctamente.")
+      setUsers((currentUsers) => [...currentUsers, newUser]);
+      setCreateUserForm(initialCreateUserForm);
+      setCreateUserMessage("Usuario creado correctamente.");
+      setIsCreateFormOpen(false);
     } catch {
-      setCreateUserError("No se pudo crear el usuario. Revisa correo o DNI.")
+      setCreateUserError("No se pudo crear el usuario. Revisa correo o DNI.");
     } finally {
-      setIsCreatingUser(false)
+      setIsCreatingUser(false);
     }
-  }
+  };
 
   const handleRegisterAttendance = async () => {
-    const dni = attendanceDni.trim()
+    const dni = attendanceDni.trim();
 
     if (!/^\d{8}$/.test(dni)) {
-      setAttendanceError("Ingresa un DNI válido de 8 dígitos.")
-      setAttendanceMessage("")
-      return
+      setAttendanceError("Ingresa un DNI válido de 8 dígitos.");
+      setAttendanceMessage("");
+      return;
     }
 
     try {
-      setIsRegisteringAttendance(true)
-      setAttendanceError("")
-      setAttendanceMessage("")
+      setIsRegisteringAttendance(true);
+      setAttendanceError("");
+      setAttendanceMessage("");
 
-      const newAttendance = await registerAttendanceByDniRequest(dni)
+      const newAttendance = await registerAttendanceByDniRequest(dni);
 
       setAttendances((currentAttendances) => [
         newAttendance,
         ...currentAttendances,
-      ])
+      ]);
 
-      setAttendanceDni("")
-      setAttendanceMessage(
-        `Ingreso registrado: ${newAttendance.studentName}`,
-      )
+      setAttendanceDni("");
+      setAttendanceMessage(`Ingreso registrado: ${newAttendance.studentName}`);
     } catch {
       setAttendanceError(
         "No se pudo registrar el ingreso. Verifica DNI o membresía.",
-      )
+      );
     } finally {
-      setIsRegisteringAttendance(false)
+      setIsRegisteringAttendance(false);
     }
-  }
+  };
 
   const startEditingUser = (user: AdminUserResponse) => {
-    setEditingUser(user)
+    setActiveSection("students");
+    setIsCreateFormOpen(false);
+    setEditingUser(user);
     setEditUserForm({
       fullName: user.fullName,
       email: user.email,
@@ -470,139 +626,190 @@ export function AdminDashboard() {
       membershipAmount: String(user.membershipAmount ?? ""),
       membershipStartDate: user.membershipStartDate ?? today,
       coachId: user.coachId ? String(user.coachId) : "",
-    })
-    setEditMessage("")
-    setEditError("")
-  }
+    });
+    setEditMessage("");
+    setEditError("");
+  };
 
   const cancelEditingUser = () => {
-    setEditingUser(null)
-    setEditUserForm(null)
-    setEditMessage("")
-    setEditError("")
-  }
+    setEditingUser(null);
+    setEditUserForm(null);
+    setEditMessage("");
+    setEditError("");
+  };
 
   const handleEditUserChange = (
     field: keyof EditUserFormState,
     value: string | boolean,
   ) => {
     setEditUserForm((currentForm) => {
-      if (!currentForm) return currentForm
+      if (!currentForm) return currentForm;
 
       return {
         ...currentForm,
         [field]: value,
-      }
-    })
+      };
+    });
 
-    setEditMessage("")
-    setEditError("")
-  }
+    setEditMessage("");
+    setEditError("");
+  };
 
   const handleSaveEditUser = async () => {
-    if (!editingUser || !editUserForm) return
+    if (!editingUser || !editUserForm) return;
 
-    const payload = buildUpdatePayload(editUserForm)
+    const payload = buildUpdatePayload(editUserForm);
 
     if (!payload.fullName || !payload.email) {
-      setEditError("Completa nombre y correo.")
-      return
+      setEditError("Completa nombre y correo.");
+      return;
     }
 
     if (payload.role === "STUDENT") {
       if (!payload.dni || !payload.phoneNumber) {
-        setEditError("Para alumnos debes ingresar DNI y celular.")
-        return
+        setEditError("Para alumnos debes ingresar DNI y celular.");
+        return;
       }
 
       if (!payload.membershipPlan || !payload.membershipAmount) {
-        setEditError("Para alumnos debes ingresar plan y monto.")
-        return
+        setEditError("Para alumnos debes ingresar plan y monto.");
+        return;
       }
 
       if (!payload.membershipStartDate) {
-        setEditError("Selecciona la fecha de inicio de membresía.")
-        return
+        setEditError("Selecciona la fecha de inicio de membresía.");
+        return;
       }
     }
 
     try {
-      setIsSavingEdit(true)
-      setEditError("")
-      setEditMessage("")
+      setIsSavingEdit(true);
+      setEditError("");
+      setEditMessage("");
 
-      const updatedUser = await updateAdminUserRequest(editingUser.id, payload)
+      const updatedUser = await updateAdminUserRequest(editingUser.id, payload);
 
       setUsers((currentUsers) =>
         currentUsers.map((user) =>
           user.id === updatedUser.id ? updatedUser : user,
         ),
-      )
+      );
 
-      setEditingUser(updatedUser)
-      setEditUserForm({
-        fullName: updatedUser.fullName,
-        email: updatedUser.email,
-        role: updatedUser.role,
-        active: updatedUser.active,
-        dni: updatedUser.dni ?? "",
-        phoneNumber: updatedUser.phoneNumber ?? "",
-        membershipPlan: updatedUser.membershipPlan ?? "MENSUAL",
-        membershipAmount: String(updatedUser.membershipAmount ?? ""),
-        membershipStartDate: updatedUser.membershipStartDate ?? today,
-        coachId: updatedUser.coachId ? String(updatedUser.coachId) : "",
-      })
-      setEditMessage("Usuario actualizado correctamente.")
+      setEditingUser(null);
+      setEditUserForm(null);
+      setEditMessage("");
+      setEditError("");
     } catch {
-      setEditError("No se pudo actualizar el usuario.")
+      setEditError("No se pudo actualizar el usuario.");
     } finally {
-      setIsSavingEdit(false)
+      setIsSavingEdit(false);
     }
-  }
-
-  const handleToggleUserActive = async (userId: number) => {
-    try {
-      const updatedUser = await toggleAdminUserActiveRequest(userId)
-
-      setUsers((currentUsers) =>
-        currentUsers.map((user) =>
-          user.id === updatedUser.id ? updatedUser : user,
-        ),
-      )
-
-      if (editingUser?.id === updatedUser.id) {
-        setEditingUser(updatedUser)
-      }
-    } catch {
-      setUsersError("No se pudo cambiar el estado del usuario.")
-    }
-  }
+  };
 
   const handleDeleteUser = async (userId: number) => {
     const confirmed = window.confirm(
       "¿Seguro que deseas eliminar este usuario?",
-    )
+    );
 
-    if (!confirmed) return
+    if (!confirmed) return;
 
     try {
-      await deleteAdminUserRequest(userId)
+      await deleteAdminUserRequest(userId);
 
       setUsers((currentUsers) =>
         currentUsers.filter((user) => user.id !== userId),
-      )
+      );
 
       if (editingUser?.id === userId) {
-        cancelEditingUser()
+        cancelEditingUser();
       }
     } catch {
-      setUsersError("No se pudo eliminar el usuario.")
+      setUsersError("No se pudo eliminar el usuario.");
     }
-  }
+  };
+
+  const handleProfilePhotoChange = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+
+    if (!allowedTypes.includes(file.type)) {
+      setProfilePhotoError("Usa una imagen JPG, PNG o WEBP.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setProfilePhotoError("La imagen debe pesar menos de 2MB.");
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      setIsUploadingProfilePhoto(true);
+      setProfilePhotoError("");
+      setProfilePhotoMessage("");
+
+      const response = await uploadProfilePhotoRequest(file);
+
+      setProfile((currentProfile) =>
+        currentProfile
+          ? {
+              ...currentProfile,
+              profilePhotoUrl: response.profilePhotoUrl,
+            }
+          : currentProfile,
+      );
+
+      setProfilePhotoMessage("Foto de perfil actualizada correctamente.");
+    } catch {
+      setProfilePhotoError("No se pudo subir la foto.");
+    } finally {
+      setIsUploadingProfilePhoto(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleRemoveProfilePhoto = async () => {
+    const confirmed = window.confirm("¿Deseas quitar tu foto de perfil?");
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsUploadingProfilePhoto(true);
+      setProfilePhotoError("");
+      setProfilePhotoMessage("");
+
+      const response = await removeProfilePhotoRequest();
+
+      setProfile((currentProfile) =>
+        currentProfile
+          ? {
+              ...currentProfile,
+              profilePhotoUrl: response.profilePhotoUrl,
+            }
+          : currentProfile,
+      );
+
+      setProfilePhotoMessage("Foto de perfil retirada correctamente.");
+    } catch {
+      setProfilePhotoError("No se pudo quitar la foto.");
+    } finally {
+      setIsUploadingProfilePhoto(false);
+    }
+  };
 
   const handleSidebarSelect = (target: string) => {
-    setActiveSection(target as AdminSection)
-  }
+    setActiveSection(target as AdminSection);
+  };
 
   return (
     <main className="min-h-screen bg-neutral-950 pt-24 text-white">
@@ -610,7 +817,7 @@ export function AdminDashboard() {
         <aside className="hidden w-64 shrink-0 rounded-2xl border border-neutral-800 bg-neutral-900 p-5 lg:block">
           <div className="mb-8">
             <h2 className="text-2xl font-black">
-              FitCore <span className="text-yellow-500">Pro</span>
+              Fitness <span className="text-yellow-500">World 7</span>
             </h2>
             <p className="mt-1 text-sm text-neutral-400">
               Panel administrativo
@@ -619,7 +826,7 @@ export function AdminDashboard() {
 
           <nav className="space-y-2">
             {sidebarItems.map((item) => {
-              const Icon = item.icon
+              const Icon = item.icon;
 
               return (
                 <button
@@ -635,14 +842,14 @@ export function AdminDashboard() {
                   <Icon size={20} />
                   {item.label}
                 </button>
-              )
+              );
             })}
           </nav>
         </aside>
 
         <div className="mb-4 grid grid-cols-2 gap-2 lg:hidden">
           {sidebarItems.map((item) => {
-            const Icon = item.icon
+            const Icon = item.icon;
 
             return (
               <button
@@ -658,7 +865,7 @@ export function AdminDashboard() {
                 <Icon size={17} />
                 {item.label}
               </button>
-            )
+            );
           })}
         </div>
 
@@ -689,11 +896,80 @@ export function AdminDashboard() {
                 </p>
               </div>
             )}
+
+            <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+              <input
+                ref={profilePhotoInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={handleProfilePhotoChange}
+                className="hidden"
+              />
+
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <ProfileAvatar
+                    fullName={profile?.fullName}
+                    profilePhotoUrl={profile?.profilePhotoUrl}
+                    className="h-16 w-16 shrink-0 rounded-2xl border-2 border-yellow-500"
+                    fallbackClassName="flex items-center justify-center bg-yellow-500 text-xl font-black text-black"
+                  />
+
+                  <div>
+                    <p className="text-sm font-semibold text-yellow-500">
+                      Perfil del administrador
+                    </p>
+                    <h2 className="mt-1 text-lg font-black text-white">
+                      {profile?.fullName ?? "Administrador"}
+                    </h2>
+                    <p className="mt-1 text-sm text-neutral-400">
+                      {profile?.email ?? "Cuenta administrativa"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => profilePhotoInputRef.current?.click()}
+                    disabled={isUploadingProfilePhoto}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-yellow-500 px-4 py-3 text-sm font-bold text-black transition hover:bg-yellow-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <ImageUp size={18} />
+                    {isUploadingProfilePhoto ? "Subiendo..." : "Subir foto"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRemoveProfilePhoto}
+                    disabled={isUploadingProfilePhoto || !profile?.profilePhotoUrl}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm font-bold text-neutral-300 transition hover:border-red-500 hover:text-red-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Trash2 size={18} />
+                    Quitar
+                  </button>
+                </div>
+              </div>
+
+              {profilePhotoMessage && (
+                <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400">
+                  {profilePhotoMessage}
+                </div>
+              )}
+
+              {profilePhotoError && (
+                <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-400">
+                  {profilePhotoError}
+                </div>
+              )}
+            </div>
           </header>
 
-          <section className={`${activeSection === "dashboard" ? "grid" : "hidden"} gap-4 sm:grid-cols-2 lg:grid-cols-3`}>
+          <section
+            className={`${activeSection === "dashboard" ? "grid" : "hidden"} gap-4 sm:grid-cols-2 lg:grid-cols-3`}
+          >
             {metricsToShow.map((metric, index) => {
-              const Icon = metricIcons[index]
+              const Icon = metricIcons[index];
 
               return (
                 <article
@@ -717,7 +993,7 @@ export function AdminDashboard() {
                     {metric.description}
                   </p>
                 </article>
-              )
+              );
             })}
           </section>
 
@@ -741,9 +1017,9 @@ export function AdminDashboard() {
                   type="text"
                   value={attendanceDni}
                   onChange={(event) => {
-                    setAttendanceDni(event.target.value)
-                    setAttendanceError("")
-                    setAttendanceMessage("")
+                    setAttendanceDni(event.target.value);
+                    setAttendanceError("");
+                    setAttendanceMessage("");
                   }}
                   placeholder="DNI del alumno"
                   maxLength={8}
@@ -825,9 +1101,7 @@ export function AdminDashboard() {
                             attendance.membershipStatus,
                           )}`}
                         >
-                          {formatMembershipStatus(
-                            attendance.membershipStatus,
-                          )}
+                          {formatMembershipStatus(attendance.membershipStatus)}
                         </span>
                       </div>
 
@@ -842,7 +1116,9 @@ export function AdminDashboard() {
             </article>
           </section>
 
-          <section className={`${activeSection === "dashboard" ? "grid" : "hidden"} mt-6 gap-6 lg:grid-cols-2`}>
+          <section
+            className={`${activeSection === "dashboard" ? "grid" : "hidden"} mt-6 gap-6 lg:grid-cols-2`}
+          >
             <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl">
               <h2 className="text-lg font-black">Membresías por vencer</h2>
               <p className="mt-1 text-sm text-neutral-400">
@@ -893,9 +1169,7 @@ export function AdminDashboard() {
                     key={student.id}
                     className="rounded-xl border border-red-500/30 bg-red-500/10 p-4"
                   >
-                    <p className="font-bold text-red-400">
-                      {student.fullName}
-                    </p>
+                    <p className="font-bold text-red-400">{student.fullName}</p>
                     <p className="mt-1 text-sm text-neutral-400">
                       DNI: {student.dni} | Cel: {student.phoneNumber}
                     </p>
@@ -926,30 +1200,30 @@ export function AdminDashboard() {
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {trainers.map((trainer) => (
-                  <article
-                    key={trainer.id}
-                    className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-yellow-500 text-lg font-black text-black">
-                        {trainer.fullName.charAt(0).toUpperCase()}
-                      </div>
-
-                      <div>
-                        <h3 className="font-bold text-white">
-                          {trainer.fullName}
-                        </h3>
-                        <p className="mt-1 text-sm text-neutral-400">
-                          {trainer.email}
-                        </p>
-                      </div>
+                <article
+                  key={trainer.id}
+                  className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-yellow-500 text-lg font-black text-black">
+                      {trainer.fullName.charAt(0).toUpperCase()}
                     </div>
 
-                    <p className="mt-4 text-xs font-semibold text-neutral-500">
-                      Estado: {trainer.active ? "Activo" : "Inactivo"}
-                    </p>
-                  </article>
-                ))}
+                    <div>
+                      <h3 className="font-bold text-white">
+                        {trainer.fullName}
+                      </h3>
+                      <p className="mt-1 text-sm text-neutral-400">
+                        {trainer.email}
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="mt-4 text-xs font-semibold text-neutral-500">
+                    Estado: {trainer.active ? "Activo" : "Inactivo"}
+                  </p>
+                </article>
+              ))}
 
               {trainers.length === 0 && (
                 <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
@@ -1055,7 +1329,7 @@ export function AdminDashboard() {
                 <div className="overflow-x-auto rounded-xl border border-neutral-800">
                   <table
                     className="w-full text-left text-sm"
-                    style={{ minWidth: "1300px" }}
+                    style={{ minWidth: "1400px" }}
                   >
                     <thead className="bg-neutral-950">
                       <tr className="border-b border-neutral-800 text-neutral-400">
@@ -1068,6 +1342,7 @@ export function AdminDashboard() {
                         <th className="px-4 py-3 font-semibold">Coach</th>
                         <th className="px-4 py-3 font-semibold">Plan</th>
                         <th className="px-4 py-3 font-semibold">Pago</th>
+                        <th className="px-4 py-3 font-semibold">Inscripción</th>
                         <th className="px-4 py-3 font-semibold">Vence</th>
                         <th className="px-4 py-3 font-semibold">Membresía</th>
                         <th className="px-4 py-3 font-semibold">Acciones</th>
@@ -1110,6 +1385,9 @@ export function AdminDashboard() {
                             {formatMoney(user.membershipAmount)}
                           </td>
                           <td className="px-4 py-4 text-neutral-400">
+                            {formatDate(user.membershipStartDate)}
+                          </td>
+                          <td className="px-4 py-4 text-neutral-400">
                             {formatDate(user.membershipEndDate)}
                           </td>
                           <td className="px-4 py-4">
@@ -1130,15 +1408,6 @@ export function AdminDashboard() {
                                 aria-label="Editar usuario"
                               >
                                 <Edit size={17} />
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleToggleUserActive(user.id)}
-                                className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 text-neutral-300 transition hover:border-yellow-500 hover:text-yellow-500 active:scale-95"
-                                aria-label="Activar o inactivar usuario"
-                              >
-                                <Shield size={17} />
                               </button>
 
                               <button
@@ -1172,174 +1441,246 @@ export function AdminDashboard() {
                     <Plus size={22} />
                   </div>
 
-                  <h2 className="text-xl font-black">Crear Usuario</h2>
+                  <h2 className="text-xl font-black">Crear alumno / usuario</h2>
                   <p className="mt-1 text-sm text-neutral-400">
-                    Registra alumnos, entrenadores o administradores.
+                    Haz clic para abrir el formulario y registrar un nuevo
+                    alumno, entrenador o administrador.
                   </p>
                 </div>
 
-                <form className="space-y-4">
-                  <input
-                    type="text"
-                    value={createUserForm.fullName}
-                    onChange={(event) =>
-                      handleCreateUserChange("fullName", event.target.value)
-                    }
-                    placeholder="Nombre completo"
-                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
-                  />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateFormOpen((currentValue) => !currentValue);
+                    setCreateUserError("");
+                    setCreateUserMessage("");
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-500 px-4 py-3 font-bold text-black transition hover:bg-yellow-400 active:scale-[0.98]"
+                >
+                  <Plus size={19} />
+                  {isCreateFormOpen ? "Ocultar formulario" : "Crear alumno"}
+                </button>
 
-                  <input
-                    type="email"
-                    value={createUserForm.email}
-                    onChange={(event) =>
-                      handleCreateUserChange("email", event.target.value)
-                    }
-                    placeholder="Correo electrónico"
-                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
-                  />
+                {isCreateFormOpen && (
+                  <form className="space-y-4" autoComplete="off">
+                    <input
+                      type="text"
+                      className="hidden"
+                      tabIndex={-1}
+                      autoComplete="username"
+                      aria-hidden="true"
+                    />
+                    <input
+                      type="password"
+                      className="hidden"
+                      tabIndex={-1}
+                      autoComplete="new-password"
+                      aria-hidden="true"
+                    />
+                    <input
+                      type="text"
+                      value={createUserForm.fullName}
+                      onChange={(event) =>
+                        handleCreateUserChange("fullName", event.target.value)
+                      }
+                      name="create_full_name"
+                      autoComplete="off"
+                      placeholder="Nombre completo"
+                      className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
+                    />
 
-                  <input
-                    type="password"
-                    value={createUserForm.password}
-                    onChange={(event) =>
-                      handleCreateUserChange("password", event.target.value)
-                    }
-                    placeholder="Contraseña"
-                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
-                  />
+                    <input
+                      type="email"
+                      value={createUserForm.email}
+                      onChange={(event) =>
+                        handleCreateUserChange("email", event.target.value)
+                      }
+                      name="create_email_fitworld"
+                      autoComplete="off"
+                      placeholder="Correo electrónico"
+                      className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
+                    />
 
-                  <select
-                    value={createUserForm.role}
-                    onChange={(event) =>
-                      handleCreateUserChange(
-                        "role",
-                        event.target.value as UserRole,
-                      )
-                    }
-                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition focus:border-yellow-500"
-                  >
-                    <option value="STUDENT">Alumno</option>
-                    <option value="TRAINER">Entrenador</option>
-                    <option value="ADMIN">Administrador</option>
-                  </select>
+                    <input
+                      type="password"
+                      value={createUserForm.password}
+                      onChange={(event) =>
+                        handleCreateUserChange("password", event.target.value)
+                      }
+                      name="create_password_fitworld"
+                      autoComplete="new-password"
+                      placeholder="Contraseña"
+                      className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
+                    />
 
-                  {createUserForm.role === "STUDENT" && (
-                    <div className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-                      <p className="text-sm font-bold text-yellow-500">
-                        Datos de membresía
-                      </p>
+                    <select
+                      value={createUserForm.role}
+                      onChange={(event) =>
+                        handleCreateUserChange(
+                          "role",
+                          event.target.value as UserRole,
+                        )
+                      }
+                      className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition focus:border-yellow-500"
+                    >
+                      <option value="STUDENT">Alumno</option>
+                      <option value="TRAINER">Entrenador</option>
+                      <option value="ADMIN">Administrador</option>
+                    </select>
 
-                      <input
-                        type="text"
-                        value={createUserForm.dni}
-                        onChange={(event) =>
-                          handleCreateUserChange("dni", event.target.value)
-                        }
-                        placeholder="DNI / Código de alumno"
-                        maxLength={8}
-                        className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-yellow-500"
-                      />
+                    {createUserForm.role === "STUDENT" && (
+                      <div className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                        <p className="text-sm font-bold text-yellow-500">
+                          Datos de membresía
+                        </p>
 
-                      <input
-                        type="text"
-                        value={createUserForm.phoneNumber}
-                        onChange={(event) =>
-                          handleCreateUserChange(
-                            "phoneNumber",
-                            event.target.value,
-                          )
-                        }
-                        placeholder="Celular"
-                        maxLength={9}
-                        className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-yellow-500"
-                      />
+                        <input
+                          type="text"
+                          value={createUserForm.dni}
+                          onChange={(event) =>
+                            handleCreateUserChange("dni", event.target.value)
+                          }
+                          placeholder="DNI / Código de alumno"
+                          maxLength={8}
+                          className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-yellow-500"
+                        />
 
-                      <select
-                        value={createUserForm.membershipPlan}
-                        onChange={(event) =>
-                          handleCreateUserChange(
-                            "membershipPlan",
-                            event.target.value,
-                          )
-                        }
-                        className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-yellow-500"
-                      >
-                        <option value="LIBRE">Libre</option>
-                        <option value="MENSUAL">1 mes</option>
-                        <option value="TRIMESTRAL">3 meses</option>
-                        <option value="SEMESTRAL">6 meses</option>
-                        <option value="ANUAL">1 año</option>
-                      </select>
+                        <input
+                          type="text"
+                          value={createUserForm.phoneNumber}
+                          onChange={(event) =>
+                            handleCreateUserChange(
+                              "phoneNumber",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="Celular"
+                          maxLength={9}
+                          className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-yellow-500"
+                        />
 
-                      <input
-                        type="number"
-                        value={createUserForm.membershipAmount}
-                        onChange={(event) =>
-                          handleCreateUserChange(
-                            "membershipAmount",
-                            event.target.value,
-                          )
-                        }
-                        placeholder="Monto pagado"
-                        className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-yellow-500"
-                      />
+                        <select
+                          value={createUserForm.membershipPlan}
+                          onChange={(event) =>
+                            handleCreateUserChange(
+                              "membershipPlan",
+                              event.target.value,
+                            )
+                          }
+                          className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-yellow-500"
+                        >
+                          <option value="LIBRE">Libre</option>
+                          <option value="MENSUAL">1 mes</option>
+                          <option value="TRIMESTRAL">3 meses</option>
+                          <option value="SEMESTRAL">6 meses</option>
+                          <option value="ANUAL">1 año</option>
+                        </select>
 
-                      <input
-                        type="date"
-                        value={createUserForm.membershipStartDate}
-                        onChange={(event) =>
-                          handleCreateUserChange(
-                            "membershipStartDate",
-                            event.target.value,
-                          )
-                        }
-                        className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-yellow-500"
-                      />
+                        <input
+                          type="number"
+                          value={createUserForm.membershipAmount}
+                          onChange={(event) =>
+                            handleCreateUserChange(
+                              "membershipAmount",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="Monto pagado"
+                          className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-yellow-500"
+                        />
 
-                      <select
-                        value={createUserForm.coachId}
-                        onChange={(event) =>
-                          handleCreateUserChange("coachId", event.target.value)
-                        }
-                        className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-yellow-500"
-                      >
-                        <option value="">Sin coach</option>
-                        {trainers.map((trainer) => (
-                          <option key={trainer.id} value={trainer.id}>
-                            {trainer.fullName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+                        <div>
+                          <label className="mb-2 block text-sm font-semibold text-neutral-300">
+                            Fecha de inscripción
+                          </label>
 
-                  {createUserError && (
-                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-400">
-                      {createUserError}
-                    </div>
-                  )}
+                          <input
+                            type="date"
+                            value={createUserForm.membershipStartDate}
+                            onChange={(event) =>
+                              handleCreateUserChange(
+                                "membershipStartDate",
+                                event.target.value,
+                              )
+                            }
+                            className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-yellow-500"
+                          />
+                        </div>
 
-                  {createUserMessage && (
-                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400">
-                      {createUserMessage}
-                    </div>
-                  )}
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                              Fecha de inscripción
+                            </p>
 
-                  <button
-                    type="button"
-                    onClick={handleCreateUser}
-                    disabled={isCreatingUser}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-500 px-4 py-3 font-bold text-black transition hover:bg-yellow-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <Plus size={19} />
-                    {isCreatingUser ? "Creando usuario..." : "Crear Usuario"}
-                  </button>
-                </form>
+                            <p className="mt-1 text-sm font-bold text-white">
+                              {formatDate(createUserForm.membershipStartDate)}
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-yellow-500">
+                              Fecha final de membresía
+                            </p>
+
+                            <p className="mt-1 text-sm font-bold text-white">
+                              {createMembershipEndDatePreview}
+                            </p>
+                          </div>
+                        </div>
+
+                        <select
+                          value={createUserForm.coachId}
+                          onChange={(event) =>
+                            handleCreateUserChange(
+                              "coachId",
+                              event.target.value,
+                            )
+                          }
+                          className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-yellow-500"
+                        >
+                          <option value="">Sin coach</option>
+                          {trainers.map((trainer) => (
+                            <option key={trainer.id} value={trainer.id}>
+                              {trainer.fullName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {createUserError && (
+                      <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-400">
+                        {createUserError}
+                      </div>
+                    )}
+
+                    {createUserMessage && (
+                      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400">
+                        {createUserMessage}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleCreateUser}
+                      disabled={isCreatingUser}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-500 px-4 py-3 font-bold text-black transition hover:bg-yellow-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Plus size={19} />
+                      {isCreatingUser
+                        ? "Creando usuario..."
+                        : "Guardar usuario"}
+                    </button>
+                  </form>
+                )}
               </section>
 
               {editingUser && editUserForm && (
-                <section className="rounded-2xl border border-yellow-500/30 bg-neutral-900 p-4 shadow-xl sm:p-5">
+                <section
+                  ref={editUserSectionRef}
+                  className="rounded-2xl border border-yellow-500/30 bg-neutral-900 p-4 shadow-xl sm:p-5"
+                >
                   <div className="mb-5">
                     <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-yellow-500 text-black">
                       <Edit size={22} />
@@ -1351,13 +1692,15 @@ export function AdminDashboard() {
                     </p>
                   </div>
 
-                  <form className="space-y-4">
+                  <form className="space-y-4" autoComplete="off">
                     <input
                       type="text"
                       value={editUserForm.fullName}
                       onChange={(event) =>
                         handleEditUserChange("fullName", event.target.value)
                       }
+                      name="edit_full_name"
+                      autoComplete="off"
                       placeholder="Nombre completo"
                       className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
                     />
@@ -1462,17 +1805,45 @@ export function AdminDashboard() {
                           className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-yellow-500"
                         />
 
-                        <input
-                          type="date"
-                          value={editUserForm.membershipStartDate}
-                          onChange={(event) =>
-                            handleEditUserChange(
-                              "membershipStartDate",
-                              event.target.value,
-                            )
-                          }
-                          className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-yellow-500"
-                        />
+                        <div>
+                          <label className="mb-2 block text-sm font-semibold text-neutral-300">
+                            Fecha de inscripción
+                          </label>
+
+                          <input
+                            type="date"
+                            value={editUserForm.membershipStartDate}
+                            onChange={(event) =>
+                              handleEditUserChange(
+                                "membershipStartDate",
+                                event.target.value,
+                              )
+                            }
+                            className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-yellow-500"
+                          />
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                              Fecha de inscripción
+                            </p>
+
+                            <p className="mt-1 text-sm font-bold text-white">
+                              {formatDate(editUserForm.membershipStartDate)}
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-yellow-500">
+                              Fecha final de membresía
+                            </p>
+
+                            <p className="mt-1 text-sm font-bold text-white">
+                              {editMembershipEndDatePreview}
+                            </p>
+                          </div>
+                        </div>
 
                         <select
                           value={editUserForm.coachId}
@@ -1529,5 +1900,5 @@ export function AdminDashboard() {
         </section>
       </div>
     </main>
-  )
+  );
 }

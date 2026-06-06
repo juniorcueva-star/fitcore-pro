@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react"
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react"
 import {
   Apple,
   CheckCircle2,
   ClipboardList,
   Dumbbell,
+  ImageUp,
   LogOut,
   Plus,
   Salad,
@@ -16,14 +17,24 @@ import {
 } from "../../services/dashboard.service"
 import {
   createTrainerRoutineRequest,
+  getTrainerNutritionPlansRequest,
   getTrainerRoutinesRequest,
   getTrainerStudentsRequest,
   removeTrainerStudentRequest,
+  saveTrainerNutritionPlanRequest,
   type CreateRoutineExerciseFormData,
   type MembershipStatus,
+  type NutritionPlanResponse,
   type RoutineExerciseResponse,
+  type SaveNutritionPlanFormData,
   type TrainerStudentResponse,
 } from "./trainer.service"
+import { getMyProfileRequest } from "../auth/auth.service"
+import type { UserProfileResponse } from "../auth/auth.types"
+import {
+  removeProfilePhotoRequest,
+  uploadProfilePhotoRequest,
+} from "../profile/profile.service"
 
 type TrainerSection = "students" | "routines" | "nutrition"
 
@@ -32,6 +43,15 @@ const initialRoutineForm: CreateRoutineExerciseFormData = {
   exerciseName: "",
   series: 4,
   repetitions: 12,
+}
+
+const initialNutritionForm: SaveNutritionPlanFormData = {
+  studentId: 0,
+  breakfast: "",
+  morningSnack: "",
+  lunch: "",
+  afternoonSnack: "",
+  dinner: "",
 }
 
 const sectionItems = [
@@ -55,6 +75,81 @@ function getMembershipStatusClass(status: MembershipStatus) {
   return "bg-neutral-800 text-neutral-400"
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return "-"
+
+  return new Intl.DateTimeFormat("es-PE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value))
+}
+
+function buildNutritionForm(
+  studentId: number,
+  nutritionPlan?: NutritionPlanResponse | null,
+): SaveNutritionPlanFormData {
+  return {
+    studentId,
+    breakfast: nutritionPlan?.breakfast ?? "",
+    morningSnack: nutritionPlan?.morningSnack ?? "",
+    lunch: nutritionPlan?.lunch ?? "",
+    afternoonSnack: nutritionPlan?.afternoonSnack ?? "",
+    dinner: nutritionPlan?.dinner ?? "",
+  }
+}
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api"
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "")
+
+function getProfilePhotoSrc(profilePhotoUrl?: string | null) {
+  if (!profilePhotoUrl) return null
+  if (profilePhotoUrl.startsWith("http://") || profilePhotoUrl.startsWith("https://")) {
+    return profilePhotoUrl
+  }
+  return `${API_ORIGIN}${profilePhotoUrl}`
+}
+
+function getInitials(fullName?: string | null) {
+  if (!fullName) return "U"
+
+  const words = fullName.trim().split(/\s+/).filter(Boolean)
+
+  if (words.length === 0) return "U"
+  if (words.length === 1) return words[0].charAt(0).toUpperCase()
+
+  return `${words[0].charAt(0)}${words[1].charAt(0)}`.toUpperCase()
+}
+
+function ProfileAvatar({
+  fullName,
+  profilePhotoUrl,
+  className,
+  fallbackClassName,
+}: {
+  fullName?: string | null
+  profilePhotoUrl?: string | null
+  className: string
+  fallbackClassName: string
+}) {
+  const photoSrc = getProfilePhotoSrc(profilePhotoUrl)
+
+  if (photoSrc) {
+    return (
+      <img
+        src={photoSrc}
+        alt={fullName ? `Foto de ${fullName}` : "Foto de perfil"}
+        className={`${className} object-cover`}
+      />
+    )
+  }
+
+  return <div className={`${className} ${fallbackClassName}`}>{getInitials(fullName)}</div>
+}
+
 export function TrainerDashboard() {
   const [activeSection, setActiveSection] = useState<TrainerSection>("students")
 
@@ -72,12 +167,27 @@ export function TrainerDashboard() {
   const [isLoadingRoutines, setIsLoadingRoutines] = useState(true)
   const [routinesError, setRoutinesError] = useState("")
 
+  const [nutritionPlans, setNutritionPlans] = useState<NutritionPlanResponse[]>([])
+  const [isLoadingNutritionPlans, setIsLoadingNutritionPlans] = useState(true)
+  const [nutritionForm, setNutritionForm] =
+    useState<SaveNutritionPlanFormData>(initialNutritionForm)
+  const [isSavingNutrition, setIsSavingNutrition] = useState(false)
+  const [nutritionMessage, setNutritionMessage] = useState("")
+  const [nutritionError, setNutritionError] = useState("")
+
   const [routineForm, setRoutineForm] =
     useState<CreateRoutineExerciseFormData>(initialRoutineForm)
 
   const [isCreatingRoutine, setIsCreatingRoutine] = useState(false)
   const [routineMessage, setRoutineMessage] = useState("")
   const [routineError, setRoutineError] = useState("")
+
+  const [profile, setProfile] = useState<UserProfileResponse | null>(null)
+  const [isUploadingProfilePhoto, setIsUploadingProfilePhoto] = useState(false)
+  const [profilePhotoMessage, setProfilePhotoMessage] = useState("")
+  const [profilePhotoError, setProfilePhotoError] = useState("")
+
+  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     let isActive = true
@@ -91,6 +201,26 @@ export function TrainerDashboard() {
       .catch(() => {
         if (isActive) {
           setBackendStatus(null)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let isActive = true
+
+    getMyProfileRequest()
+      .then((data) => {
+        if (isActive) {
+          setProfile(data)
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setProfile(null)
         }
       })
 
@@ -122,6 +252,11 @@ export function TrainerDashboard() {
           })
 
           setRoutineForm((currentForm) => ({
+            ...currentForm,
+            studentId: data[0]?.id ?? 0,
+          }))
+
+          setNutritionForm((currentForm) => ({
             ...currentForm,
             studentId: data[0]?.id ?? 0,
           }))
@@ -169,6 +304,32 @@ export function TrainerDashboard() {
     }
   }, [])
 
+  useEffect(() => {
+    let isActive = true
+
+    getTrainerNutritionPlansRequest()
+      .then((data) => {
+        if (isActive) {
+          setNutritionPlans(data)
+          setNutritionError("")
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setNutritionError("No se pudieron cargar los planes de alimentación.")
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoadingNutritionPlans(false)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [])
+
   const selectedStudent = useMemo(
     () => students.find((student) => student.id === selectedStudentId) ?? null,
     [students, selectedStudentId],
@@ -182,6 +343,16 @@ export function TrainerDashboard() {
     return routines.filter((routine) => routine.studentId === selectedStudentId)
   }, [routines, selectedStudentId])
 
+  const selectedStudentNutritionPlan = useMemo(() => {
+    if (!selectedStudentId) {
+      return null
+    }
+
+    return (
+      nutritionPlans.find((plan) => plan.studentId === selectedStudentId) ?? null
+    )
+  }, [nutritionPlans, selectedStudentId])
+
   const completedSelectedRoutines = selectedStudentRoutines.filter(
     (routine) => routine.completed,
   ).length
@@ -193,9 +364,7 @@ export function TrainerDashboard() {
           (completedSelectedRoutines / selectedStudentRoutines.length) * 100,
         )
 
-  const completedRoutinesCount = routines.filter(
-    (routine) => routine.completed,
-  ).length
+
 
   const handleRoutineFormChange = (
     field: keyof CreateRoutineExerciseFormData,
@@ -210,19 +379,57 @@ export function TrainerDashboard() {
     }))
 
     if (field === "studentId") {
-      setSelectedStudentId(Number(value) || null)
+      const studentId = Number(value) || null
+      setSelectedStudentId(studentId)
+
+      if (studentId) {
+        const existingNutritionPlan = nutritionPlans.find(
+          (plan) => plan.studentId === studentId,
+        )
+        setNutritionForm(buildNutritionForm(studentId, existingNutritionPlan))
+      }
     }
 
     setRoutineMessage("")
     setRoutineError("")
   }
 
+  const handleNutritionFormChange = (
+    field: keyof SaveNutritionPlanFormData,
+    value: string,
+  ) => {
+    setNutritionForm((currentForm) => ({
+      ...currentForm,
+      [field]: field === "studentId" ? Number(value) : value,
+    }))
+
+    if (field === "studentId") {
+      const studentId = Number(value) || null
+      setSelectedStudentId(studentId)
+
+      if (studentId) {
+        const existingNutritionPlan = nutritionPlans.find(
+          (plan) => plan.studentId === studentId,
+        )
+        setNutritionForm(buildNutritionForm(studentId, existingNutritionPlan))
+      }
+    }
+
+    setNutritionMessage("")
+    setNutritionError("")
+  }
+
   const handleSelectStudent = (studentId: number) => {
+    const existingNutritionPlan = nutritionPlans.find(
+      (plan) => plan.studentId === studentId,
+    )
+
     setSelectedStudentId(studentId)
     setRoutineForm((currentForm) => ({
       ...currentForm,
       studentId,
     }))
+    setNutritionForm(buildNutritionForm(studentId, existingNutritionPlan))
     setStudentActionMessage("")
     setStudentActionError("")
   }
@@ -272,6 +479,63 @@ export function TrainerDashboard() {
     }
   }
 
+  const handleSaveNutritionPlan = async () => {
+    const hasAnyMeal =
+      nutritionForm.breakfast.trim() ||
+      nutritionForm.morningSnack.trim() ||
+      nutritionForm.lunch.trim() ||
+      nutritionForm.afternoonSnack.trim() ||
+      nutritionForm.dinner.trim()
+
+    if (!nutritionForm.studentId) {
+      setNutritionError("Selecciona un alumno.")
+      return
+    }
+
+    if (!hasAnyMeal) {
+      setNutritionError("Ingresa al menos una comida del plan.")
+      return
+    }
+
+    try {
+      setIsSavingNutrition(true)
+      setNutritionError("")
+      setNutritionMessage("")
+
+      const savedNutritionPlan = await saveTrainerNutritionPlanRequest({
+        studentId: nutritionForm.studentId,
+        breakfast: nutritionForm.breakfast.trim(),
+        morningSnack: nutritionForm.morningSnack.trim(),
+        lunch: nutritionForm.lunch.trim(),
+        afternoonSnack: nutritionForm.afternoonSnack.trim(),
+        dinner: nutritionForm.dinner.trim(),
+      })
+
+      setNutritionPlans((currentPlans) => {
+        const exists = currentPlans.some(
+          (plan) => plan.id === savedNutritionPlan.id,
+        )
+
+        if (exists) {
+          return currentPlans.map((plan) =>
+            plan.id === savedNutritionPlan.id ? savedNutritionPlan : plan,
+          )
+        }
+
+        return [savedNutritionPlan, ...currentPlans]
+      })
+
+      setNutritionForm(buildNutritionForm(savedNutritionPlan.studentId, savedNutritionPlan))
+      setNutritionMessage("Plan de alimentación guardado correctamente.")
+    } catch {
+      setNutritionError(
+        "No se pudo guardar el plan. Verifica que el alumno pertenezca a tu lista.",
+      )
+    } finally {
+      setIsSavingNutrition(false)
+    }
+  }
+
   const handleRemoveStudent = async (studentId: number) => {
     const confirmed = window.confirm(
       "¿Seguro que deseas expulsar este alumno de tu lista?",
@@ -287,31 +551,113 @@ export function TrainerDashboard() {
 
       const response = await removeTrainerStudentRequest(studentId)
 
-      setStudents((currentStudents) =>
-        currentStudents.filter((student) => student.id !== studentId),
+      const remainingStudents = students.filter(
+        (student) => student.id !== studentId,
       )
+      const nextStudent = remainingStudents[0] ?? null
 
+      setStudents(remainingStudents)
       setRoutines((currentRoutines) =>
         currentRoutines.filter((routine) => routine.studentId !== studentId),
       )
-
-      setSelectedStudentId((currentSelectedId) => {
-        if (currentSelectedId !== studentId) {
-          return currentSelectedId
-        }
-
-        const nextStudent = students.find((student) => student.id !== studentId)
-        return nextStudent?.id ?? null
-      })
-
+      setNutritionPlans((currentPlans) =>
+        currentPlans.filter((plan) => plan.studentId !== studentId),
+      )
+      setSelectedStudentId(nextStudent?.id ?? null)
       setRoutineForm((currentForm) => ({
         ...currentForm,
-        studentId: 0,
+        studentId: nextStudent?.id ?? 0,
       }))
-
+      setNutritionForm(
+        nextStudent
+          ? buildNutritionForm(
+              nextStudent.id,
+              nutritionPlans.find((plan) => plan.studentId === nextStudent.id),
+            )
+          : initialNutritionForm,
+      )
       setStudentActionMessage(response.message)
     } catch {
       setStudentActionError("No se pudo expulsar al alumno.")
+    }
+  }
+
+  const handleProfilePhotoChange = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0]
+
+    if (!file) {
+      return
+    }
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp"]
+
+    if (!allowedTypes.includes(file.type)) {
+      setProfilePhotoError("Usa una imagen JPG, PNG o WEBP.")
+      event.target.value = ""
+      return
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setProfilePhotoError("La imagen debe pesar menos de 2MB.")
+      event.target.value = ""
+      return
+    }
+
+    try {
+      setIsUploadingProfilePhoto(true)
+      setProfilePhotoError("")
+      setProfilePhotoMessage("")
+
+      const response = await uploadProfilePhotoRequest(file)
+
+      setProfile((currentProfile) =>
+        currentProfile
+          ? {
+              ...currentProfile,
+              profilePhotoUrl: response.profilePhotoUrl,
+            }
+          : currentProfile,
+      )
+
+      setProfilePhotoMessage("Foto de perfil actualizada correctamente.")
+    } catch {
+      setProfilePhotoError("No se pudo subir la foto.")
+    } finally {
+      setIsUploadingProfilePhoto(false)
+      event.target.value = ""
+    }
+  }
+
+  const handleRemoveProfilePhoto = async () => {
+    const confirmed = window.confirm("¿Deseas quitar tu foto de perfil?")
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setIsUploadingProfilePhoto(true)
+      setProfilePhotoError("")
+      setProfilePhotoMessage("")
+
+      const response = await removeProfilePhotoRequest()
+
+      setProfile((currentProfile) =>
+        currentProfile
+          ? {
+              ...currentProfile,
+              profilePhotoUrl: response.profilePhotoUrl,
+            }
+          : currentProfile,
+      )
+
+      setProfilePhotoMessage("Foto de perfil retirada correctamente.")
+    } catch {
+      setProfilePhotoError("No se pudo quitar la foto.")
+    } finally {
+      setIsUploadingProfilePhoto(false)
     }
   }
 
@@ -345,6 +691,73 @@ export function TrainerDashboard() {
                   </p>
                 </div>
               )}
+
+              <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <input
+                  ref={profilePhotoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleProfilePhotoChange}
+                  className="hidden"
+                />
+
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-4">
+                    <ProfileAvatar
+                      fullName={profile?.fullName}
+                      profilePhotoUrl={profile?.profilePhotoUrl}
+                      className="h-16 w-16 shrink-0 rounded-2xl border-2 border-yellow-500"
+                      fallbackClassName="flex items-center justify-center bg-yellow-500 text-xl font-black text-black"
+                    />
+
+                    <div>
+                      <p className="text-sm font-semibold text-yellow-500">
+                        Perfil del coach
+                      </p>
+                      <h2 className="mt-1 text-lg font-black text-white">
+                        {profile?.fullName ?? "Entrenador"}
+                      </h2>
+                      <p className="mt-1 text-sm text-neutral-400">
+                        {profile?.email ?? "Cuenta de entrenador"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => profilePhotoInputRef.current?.click()}
+                      disabled={isUploadingProfilePhoto}
+                      className="flex items-center justify-center gap-2 rounded-xl bg-yellow-500 px-4 py-3 text-sm font-bold text-black transition hover:bg-yellow-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <ImageUp size={18} />
+                      {isUploadingProfilePhoto ? "Subiendo..." : "Subir foto"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleRemoveProfilePhoto}
+                      disabled={isUploadingProfilePhoto || !profile?.profilePhotoUrl}
+                      className="flex items-center justify-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm font-bold text-neutral-300 transition hover:border-red-500 hover:text-red-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <LogOut size={18} />
+                      Quitar
+                    </button>
+                  </div>
+                </div>
+
+                {profilePhotoMessage && (
+                  <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400">
+                    {profilePhotoMessage}
+                  </div>
+                )}
+
+                {profilePhotoError && (
+                  <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-400">
+                    {profilePhotoError}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
@@ -359,8 +772,8 @@ export function TrainerDashboard() {
               </div>
 
               <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-4">
-                <p className="text-sm text-neutral-400">Completadas</p>
-                <p className="text-2xl font-black">{completedRoutinesCount}</p>
+                <p className="text-sm text-neutral-400">Alimentación</p>
+                <p className="text-2xl font-black">{nutritionPlans.length}</p>
               </div>
             </div>
           </div>
@@ -452,9 +865,12 @@ export function TrainerDashboard() {
                         }`}
                       >
                         <div className="flex items-center gap-4">
-                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-yellow-500 text-xl font-black text-black">
-                            {student.fullName.charAt(0).toUpperCase()}
-                          </div>
+                          <ProfileAvatar
+                            fullName={student.fullName}
+                            profilePhotoUrl={student.profilePhotoUrl}
+                            className="h-14 w-14 shrink-0 rounded-2xl border-2 border-yellow-500"
+                            fallbackClassName="flex items-center justify-center bg-yellow-500 text-xl font-black text-black"
+                          />
 
                           <div>
                             <h3 className="font-bold text-white">
@@ -476,7 +892,7 @@ export function TrainerDashboard() {
                           </span>
 
                           <span className="rounded-full bg-neutral-800 px-3 py-1 text-xs font-bold text-neutral-400">
-                            DNI: {student.dni ?? "-"}
+                            Cel: {student.phoneNumber ?? "-"}
                           </span>
                         </div>
                       </button>
@@ -506,6 +922,13 @@ export function TrainerDashboard() {
 
               {selectedStudent && (
                 <div>
+                  <ProfileAvatar
+                    fullName={selectedStudent.fullName}
+                    profilePhotoUrl={selectedStudent.profilePhotoUrl}
+                    className="mb-4 h-20 w-20 rounded-2xl border-2 border-yellow-500"
+                    fallbackClassName="flex items-center justify-center bg-yellow-500 text-2xl font-black text-black"
+                  />
+
                   <h3 className="text-2xl font-black">
                     {selectedStudent.fullName}
                   </h3>
@@ -513,8 +936,7 @@ export function TrainerDashboard() {
                     {selectedStudent.email}
                   </p>
                   <p className="mt-1 text-sm text-neutral-400">
-                    DNI: {selectedStudent.dni ?? "-"} · Celular:{" "}
-                    {selectedStudent.phoneNumber ?? "-"}
+                    Celular: {selectedStudent.phoneNumber ?? "-"}
                   </p>
 
                   <div className="mt-5 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
@@ -538,6 +960,41 @@ export function TrainerDashboard() {
                     </p>
                   </div>
 
+                  <div className="mt-5 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                    <p className="text-sm font-bold text-white">
+                      Alimentación asignada
+                    </p>
+
+                    {!selectedStudentNutritionPlan && (
+                      <p className="mt-2 text-sm text-neutral-400">
+                        Este alumno todavía no tiene plan de alimentación.
+                      </p>
+                    )}
+
+                    {selectedStudentNutritionPlan && (
+                      <div className="mt-3 space-y-2 text-sm text-neutral-400">
+                        <p>
+                          <span className="font-bold text-yellow-500">
+                            Desayuno:
+                          </span>{" "}
+                          {selectedStudentNutritionPlan.breakfast ?? "-"}
+                        </p>
+                        <p>
+                          <span className="font-bold text-yellow-500">
+                            Almuerzo:
+                          </span>{" "}
+                          {selectedStudentNutritionPlan.lunch ?? "-"}
+                        </p>
+                        <p>
+                          <span className="font-bold text-yellow-500">
+                            Cena:
+                          </span>{" "}
+                          {selectedStudentNutritionPlan.dinner ?? "-"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="mt-5 space-y-3">
                     <button
                       type="button"
@@ -549,7 +1006,15 @@ export function TrainerDashboard() {
 
                     <button
                       type="button"
-                      onClick={() => setActiveSection("nutrition")}
+                      onClick={() => {
+                        setNutritionForm(
+                          buildNutritionForm(
+                            selectedStudent.id,
+                            selectedStudentNutritionPlan,
+                          ),
+                        )
+                        setActiveSection("nutrition")
+                      }}
                       className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 font-bold text-neutral-300 transition hover:border-yellow-500 hover:text-yellow-500 active:scale-[0.98]"
                     >
                       Crear alimentación
@@ -755,69 +1220,188 @@ export function TrainerDashboard() {
 
                 <h2 className="text-xl font-black">Plan de alimentación</h2>
                 <p className="mt-2 text-sm leading-6 text-neutral-400">
-                  En la siguiente etapa conectaremos este formulario al backend.
-                  El coach podrá crear desayuno, almuerzo, cena y meriendas.
+                  Crea o actualiza el plan de alimentación de uno de tus alumnos.
                 </p>
               </div>
 
               <form className="space-y-4">
-                <select className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition focus:border-yellow-500">
-                  <option>Selecciona un alumno</option>
+                <select
+                  value={nutritionForm.studentId}
+                  onChange={(event) =>
+                    handleNutritionFormChange("studentId", event.target.value)
+                  }
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition focus:border-yellow-500"
+                >
+                  <option value={0}>Selecciona un alumno</option>
                   {students.map((student) => (
-                    <option key={student.id}>{student.fullName}</option>
+                    <option key={student.id} value={student.id}>
+                      {student.fullName}
+                    </option>
                   ))}
                 </select>
 
                 <textarea
+                  value={nutritionForm.breakfast}
+                  onChange={(event) =>
+                    handleNutritionFormChange("breakfast", event.target.value)
+                  }
                   placeholder="Desayuno"
                   rows={3}
                   className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
                 />
 
                 <textarea
+                  value={nutritionForm.morningSnack}
+                  onChange={(event) =>
+                    handleNutritionFormChange("morningSnack", event.target.value)
+                  }
                   placeholder="Merienda entre desayuno y almuerzo"
                   rows={3}
                   className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
                 />
 
                 <textarea
+                  value={nutritionForm.lunch}
+                  onChange={(event) =>
+                    handleNutritionFormChange("lunch", event.target.value)
+                  }
                   placeholder="Almuerzo"
                   rows={3}
                   className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
                 />
 
                 <textarea
+                  value={nutritionForm.afternoonSnack}
+                  onChange={(event) =>
+                    handleNutritionFormChange(
+                      "afternoonSnack",
+                      event.target.value,
+                    )
+                  }
                   placeholder="Merienda entre almuerzo y cena"
                   rows={3}
                   className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
                 />
 
                 <textarea
+                  value={nutritionForm.dinner}
+                  onChange={(event) =>
+                    handleNutritionFormChange("dinner", event.target.value)
+                  }
                   placeholder="Cena"
                   rows={3}
                   className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-yellow-500"
                 />
 
+                {nutritionError && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-400">
+                    {nutritionError}
+                  </div>
+                )}
+
+                {nutritionMessage && (
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400">
+                    {nutritionMessage}
+                  </div>
+                )}
+
                 <button
                   type="button"
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-500 px-4 py-3 font-bold text-black transition hover:bg-yellow-400 active:scale-[0.98]"
+                  onClick={handleSaveNutritionPlan}
+                  disabled={isSavingNutrition}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-500 px-4 py-3 font-bold text-black transition hover:bg-yellow-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Plus size={20} />
-                  Guardar alimentación
+                  {isSavingNutrition
+                    ? "Guardando..."
+                    : "Guardar alimentación"}
                 </button>
               </form>
             </article>
 
             <article className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-xl sm:p-6">
-              <h2 className="text-xl font-black">Vista previa</h2>
+              <h2 className="text-xl font-black">Planes guardados</h2>
               <p className="mt-1 text-sm text-neutral-400">
-                Aquí se mostrarán los planes de alimentación guardados por
-                alumno.
+                Alimentación registrada por alumno.
               </p>
 
-              <div className="mt-5 rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
-                Todavía no hay planes de alimentación conectados al backend.
-              </div>
+              {isLoadingNutritionPlans && (
+                <div className="mt-5 rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
+                  Cargando planes de alimentación...
+                </div>
+              )}
+
+              {!isLoadingNutritionPlans && nutritionPlans.length === 0 && (
+                <div className="mt-5 rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-400">
+                  Todavía no hay planes de alimentación guardados.
+                </div>
+              )}
+
+              {!isLoadingNutritionPlans && nutritionPlans.length > 0 && (
+                <div className="mt-5 space-y-4">
+                  {nutritionPlans.map((plan) => (
+                    <article
+                      key={plan.id}
+                      className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4"
+                    >
+                      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h3 className="font-bold text-white">
+                            {plan.studentName}
+                          </h3>
+                          <p className="mt-1 text-xs text-neutral-500">
+                            Actualizado: {formatDateTime(plan.updatedAt)}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedStudentId(plan.studentId)
+                            setNutritionForm(buildNutritionForm(plan.studentId, plan))
+                          }}
+                          className="rounded-xl border border-neutral-800 px-3 py-2 text-xs font-bold text-neutral-300 transition hover:border-yellow-500 hover:text-yellow-500 active:scale-95"
+                        >
+                          Editar
+                        </button>
+                      </div>
+
+                      <div className="space-y-2 text-sm text-neutral-400">
+                        <p>
+                          <span className="font-bold text-yellow-500">
+                            Desayuno:
+                          </span>{" "}
+                          {plan.breakfast ?? "-"}
+                        </p>
+                        <p>
+                          <span className="font-bold text-yellow-500">
+                            Media mañana:
+                          </span>{" "}
+                          {plan.morningSnack ?? "-"}
+                        </p>
+                        <p>
+                          <span className="font-bold text-yellow-500">
+                            Almuerzo:
+                          </span>{" "}
+                          {plan.lunch ?? "-"}
+                        </p>
+                        <p>
+                          <span className="font-bold text-yellow-500">
+                            Media tarde:
+                          </span>{" "}
+                          {plan.afternoonSnack ?? "-"}
+                        </p>
+                        <p>
+                          <span className="font-bold text-yellow-500">
+                            Cena:
+                          </span>{" "}
+                          {plan.dinner ?? "-"}
+                        </p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             </article>
           </section>
         )}

@@ -26,7 +26,8 @@ public class ProfileController {
                 user.getFullName(),
                 user.getEmail(),
                 user.getRole(),
-                user.getActive()
+                user.getActive(),
+                user.getProfilePhotoUrl()
         );
 
         return ResponseEntity.ok(response);

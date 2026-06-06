@@ -28,6 +28,9 @@ public record UpdateUserRequest(
         @Pattern(regexp = "^\\d{9}$", message = "El número de celular debe tener exactamente 9 dígitos")
         String phoneNumber,
 
+        @Size(max = 200, message = "El objetivo no debe superar 200 caracteres")
+        String fitnessGoal,
+
         MembershipPlan membershipPlan,
 
         @DecimalMin(value = "0.0", inclusive = false, message = "El monto debe ser mayor a 0")

@@ -5,6 +5,7 @@ export type AuthUser = {
   fullName: string
   email: string
   role: UserRole
+  profilePhotoUrl?: string | null
 }
 
 export type LoginFormData = {
@@ -18,6 +19,7 @@ export type LoginResponse = {
   email: string
   role: UserRole
   token: string
+  profilePhotoUrl?: string | null
 }
 
 export type UserProfileResponse = {
@@ -26,4 +28,5 @@ export type UserProfileResponse = {
   email: string
   role: UserRole
   active: boolean
+  profilePhotoUrl?: string | null
 }

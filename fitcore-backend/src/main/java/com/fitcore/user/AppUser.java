@@ -42,6 +42,12 @@ public class AppUser {
     @Column(length = 9)
     private String phoneNumber;
 
+    @Column(length = 200)
+    private String fitnessGoal;
+
+    @Column(length = 500)
+    private String profilePhotoUrl;
+
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private MembershipPlan membershipPlan;
